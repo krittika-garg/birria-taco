@@ -7,7 +7,9 @@ A geo-data REST API built with Flask-RESTX and MongoDB.
 ## Team
 - Krittika Garg
 - Matthew Jiang
-- (add teammates)
+- Daniel Enriquez
+- Anuraghav Padmaprasad
+- Sihan Ma
 
 ## Getting Started
 
