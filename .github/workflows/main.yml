@@ -6,14 +6,14 @@ name: Demo CI/CD
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
-    branches: [ master ]
+    branches: [ main ]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 env:
-  PYTHONPATH: /home/runner/work/geodata2026/geodata2026/
+  PYTHONPATH: ${{ github.workspace }}
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -21,7 +21,6 @@ jobs:
   build:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
-    environment: pa_deploy
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
