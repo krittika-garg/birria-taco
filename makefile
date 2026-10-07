@@ -12,7 +12,7 @@ prod: all_tests github
 
 github: FORCE
 	- git commit -a
-	git push origin master
+	git push origin main
 
 all_tests: FORCE
 	cd $(API_DIR); make tests
