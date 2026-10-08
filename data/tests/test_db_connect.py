@@ -1,3 +1,4 @@
+import os
 from uuid import uuid4
 
 import pytest
@@ -6,10 +7,18 @@ import pymongo as pm
 import data.db_connect as dbc
 
 
+def _test_uri():
+    # Use the cloud cluster when CLOUD_MONGO=1 (e.g. local dev in WSL),
+    # otherwise the local Mongo that CI runs in Docker.
+    if os.environ.get("CLOUD_MONGO", dbc.LOCAL) == dbc.CLOUD:
+        return os.environ["MONGO_URI"]
+    return "mongodb://localhost:27017/"
+
+
 @pytest.fixture
 def test_collection(monkeypatch):
     client = pm.MongoClient(
-        "mongodb://localhost:27017/",
+        _test_uri(),
         serverSelectionTimeoutMS=5000,
     )
     monkeypatch.setattr(dbc, "client", client)

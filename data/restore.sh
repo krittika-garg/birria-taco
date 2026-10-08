@@ -1,9 +1,9 @@
-#!/bin/sh
-# Script to backup production database to JSON files.
+#!/bin/bash
+# Script to restore production database from JSON backup files.
 
-. ./common.sh
+. "$(dirname "$0")/common.sh"
 
-for collection in ${GameCollections[@]}; do
+for collection in "${GameCollections[@]}"; do
     echo "Restoring $collection"
-    $IMP --db=$DB --collection $collection --drop --file $BKUP_DIR/$collection.json
+    $IMP --uri="$MONGO_URI" --db=$DB --collection $collection --drop --file $BKUP_DIR/$collection.json
 done
