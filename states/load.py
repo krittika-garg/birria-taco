@@ -4,6 +4,7 @@
 
 import csv
 import os
+import data.db_connect as dbc
 
 
 def load_states(file_path):
@@ -17,6 +18,8 @@ def load_states(file_path):
     with open(file_path, mode='r') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
+            row['Latitude'] = float(row['Latitude'])
+            row['Longitude'] = float(row['Longitude'])
             states.append(row)
     return states
 
@@ -28,13 +31,15 @@ def main():
     else:
         print("USAGE: python load.py <path_to_states_csv>")
         exit(1)
-   
+
     # Load states from the CSV file
     states = load_states(file_path)
-    
+
     # Print the loaded states
+    dbc.connect_db()
     for state in states:
-        print(state)
+        dbc.upsert('states', {'Abbrev': state['Abbrev']}, state)
+    print(f'Imported {len(states)} state records.')
 
 
 if __name__ == "__main__":

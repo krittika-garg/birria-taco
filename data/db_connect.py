@@ -77,6 +77,17 @@ def update(collection, filters, update_dict, db=SE_DB):
     return client[db][collection].update_one(filters, {'$set': update_dict})
 
 
+def upsert(collection, filters, update_dict, db=SE_DB):
+    """
+    Update a matching document, or insert it if none exists.
+    """
+    return client[db][collection].update_one(
+        filters,
+        {'$set': update_dict},
+        upsert=True,
+    )
+
+
 def read(collection, db=SE_DB, no_id=True) -> list:
     """
     Returns a list from the db.
