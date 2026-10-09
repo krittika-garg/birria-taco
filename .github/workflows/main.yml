@@ -34,5 +34,11 @@ jobs:
       - name: Install Python packages.
         run: make dev_env
 
-      - name: Run Python tests.
-        run: make all_tests
+      - name: Test server
+        run: cd server && make tests
+
+      - name: Test data
+        run: cd data && make tests
+
+      - name: Test security
+        run: cd security && make tests
