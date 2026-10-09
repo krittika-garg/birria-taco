@@ -42,3 +42,6 @@ jobs:
 
       - name: Test security
         run: cd security && make tests
+
+      - name: Test states
+        run: cd states && make tests
