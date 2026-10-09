@@ -1,5 +1,7 @@
 # birria-taco
 
+[![CI](https://github.com/krittika-garg/birria-taco/actions/workflows/main.yml/badge.svg)](https://github.com/krittika-garg/birria-taco/actions/workflows/main.yml)
+
 A geo-data REST API built with Flask-RESTX and MongoDB.
 
 > Project idea is still being finalized. This README will be updated as the scope is defined.
