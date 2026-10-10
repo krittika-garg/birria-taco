@@ -11,6 +11,7 @@ from flask_cors import CORS
 
 # import werkzeug.exceptions as wz
 
+import data.db_connect as dbc
 import security.auth as auth
 
 app = Flask(__name__)
@@ -28,6 +29,9 @@ MESSAGE = 'Message'
 REGISTER_EP = '/register'
 LOGIN_EP = '/login'
 LOGOUT_EP = '/logout'
+STATES_EP = '/states'
+STATES_RESP = 'states'
+STATES_COLLECT = 'states'
 
 
 @api.route(HELLO_EP)
@@ -55,6 +59,16 @@ class Endpoints(Resource):
         """
         endpoints = sorted(rule.rule for rule in api.app.url_map.iter_rules())
         return {"Available endpoints": endpoints}
+
+
+@api.route(STATES_EP)
+class States(Resource):
+    def get(self):
+        """
+        Return all states loaded by states/load.py.
+        """
+        dbc.connect_db()
+        return {STATES_RESP: dbc.read(STATES_COLLECT)}
 
 
 def _credentials():

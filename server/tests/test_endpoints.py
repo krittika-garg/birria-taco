@@ -22,6 +22,15 @@ def test_hello():
     assert ep.HELLO_RESP in resp_json
 
 
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', return_value=[{'Abbrev': 'NY'}], autospec=True)
+def test_states(mock_read, mock_connect):
+    resp = TEST_CLIENT.get(ep.STATES_EP)
+    assert resp.status_code == OK
+    assert resp.get_json() == {ep.STATES_RESP: [{'Abbrev': 'NY'}]}
+    mock_read.assert_called_once_with(ep.STATES_COLLECT)
+
+
 @patch('security.auth.register', return_value=True, autospec=True)
 def test_register(mock_reg):
     resp = TEST_CLIENT.post(
