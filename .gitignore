@@ -139,3 +139,6 @@ dmypy.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# DB backups hold password hashes; never commit them
+data/bkup/*.json
