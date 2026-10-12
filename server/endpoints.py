@@ -71,6 +71,21 @@ class States(Resource):
         return {STATES_RESP: dbc.read(STATES_COLLECT)}
 
 
+@api.route('/states/<string:abbrev>')
+class State(Resource):
+    def get(self, abbrev):
+        """Return one state by its abbreviation."""
+        dbc.connect_db()
+        state = dbc.read_one(
+            STATES_COLLECT,
+            {'Abbrev': abbrev.upper()},
+        )
+        if state is None:
+            return {MESSAGE: 'State not found'}, HTTPStatus.NOT_FOUND
+        state.pop('_id', None)
+        return {'state': state}
+
+
 def _credentials():
     data = request.get_json(silent=True) or {}
     username, password = data.get('username'), data.get('password')
