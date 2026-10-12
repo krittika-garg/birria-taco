@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/krittika-garg/birria-taco/actions/workflows/main.yml/badge.svg)](https://github.com/krittika-garg/birria-taco/actions/workflows/main.yml)
 
-A geo-data REST API built with Flask-RESTX and MongoDB.
+A restaurant-ranking app in the spirit of Beli: users log places they've eaten,
+rank them against each other, and discover spots through friends. The backend is a
+REST API built with Flask-RESTX and MongoDB.
 
-> Project idea is still being finalized. This README will be updated as the scope is defined.
+> Scope is still being fleshed out; planned features will be tracked in issues.
 
 ## Team
 - Krittika Garg
