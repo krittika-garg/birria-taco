@@ -43,3 +43,19 @@ The API will be available at http://127.0.0.1:8000.
 ~~~
 make prod
 ~~~
+
+## Personal restaurant list
+
+Log in through `POST /login` and include the returned session cookie on requests
+to `/restaurants`. Both endpoints return `401` when logged out.
+
+- `POST /restaurants` saves an entry to the logged-in user's list and returns
+  `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and
+  `city` strings. `cuisine` and `notes` are optional strings, defaulting to empty.
+  Text is trimmed; invalid input returns `400`.
+- `GET /restaurants` returns `{"restaurants": [...]}` containing only the
+  logged-in user's entries, or an empty list. Entries include a string `_id`.
+
+Ownership comes from the session; a supplied `user` field cannot change it.
+Each saved entry is personal, and repeated entries are allowed. Ranking,
+editing, deleting, and a shared restaurant catalog are not implemented yet.

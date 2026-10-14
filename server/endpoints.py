@@ -33,6 +33,8 @@ LOGOUT_EP = '/logout'
 STATES_EP = '/states'
 STATES_RESP = 'states'
 STATES_COLLECT = 'states'
+RESTAURANTS_EP = '/restaurants'
+RESTAURANTS_COLLECT = 'restaurants'
 
 
 @api.route(HELLO_EP)
@@ -195,3 +197,41 @@ class Logout(Resource):
     def post(self):
         session.clear()
         return {MESSAGE: 'logged out'}
+
+
+@api.route(RESTAURANTS_EP)
+class Restaurants(Resource):
+    def get(self):
+        """Return the logged-in user's saved restaurants."""
+        username = session.get('user')
+        if not username:
+            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        dbc.connect_db()
+        restaurants = dbc.read(
+            RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+        return {'restaurants': restaurants}
+
+    def post(self):
+        """Save a restaurant to the logged-in user's personal list."""
+        username = session.get('user')
+        if not username:
+            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return {MESSAGE: 'JSON object required'}, HTTPStatus.BAD_REQUEST
+
+        restaurant = {'user': username}
+        for field in ('name', 'city', 'cuisine', 'notes'):
+            value = data.get(field, '')
+            if not isinstance(value, str):
+                return {MESSAGE: f'{field} must be text'}, \
+                    HTTPStatus.BAD_REQUEST
+            value = value.strip()
+            if field in ('name', 'city') and not value:
+                return {MESSAGE: f'{field} required'}, HTTPStatus.BAD_REQUEST
+            restaurant[field] = value
+
+        dbc.connect_db()
+        result = dbc.create(RESTAURANTS_COLLECT, restaurant)
+        restaurant['_id'] = str(result.inserted_id)
+        return {'restaurant': restaurant}, HTTPStatus.CREATED
