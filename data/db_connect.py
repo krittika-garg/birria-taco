@@ -88,12 +88,12 @@ def upsert(collection, filters, update_dict, db=SE_DB):
     )
 
 
-def read(collection, db=SE_DB, no_id=True) -> list:
+def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
     """
-    Returns a list from the db.
+    Returns a list from the db, optionally restricted by a filter.
     """
     ret = []
-    for doc in client[db][collection].find():
+    for doc in client[db][collection].find(filt or {}):
         if no_id:
             del doc[MONGO_ID]
         else:

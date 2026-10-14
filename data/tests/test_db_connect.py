@@ -51,3 +51,18 @@ def test_create_and_read_one(test_collection):
     assert saved["name"] == "test_player"
     assert saved["score"] == 10
     assert saved["_id"] == str(result.inserted_id)
+
+
+def test_read_filters_by_owner(test_collection):
+    database, collection = test_collection
+    for username in ('bob', 'alice'):
+        dbc.create(collection, {'user': username, 'name': username},
+                   db=database)
+
+    saved = dbc.read(collection, db=database, no_id=False,
+                     filt={'user': 'bob'})
+    assert len(saved) == 1
+    assert saved[0]['user'] == 'bob'
+    assert isinstance(saved[0]['_id'], str)
+    assert len(dbc.read(collection, db=database)) == 2
+    assert dbc.read(collection, db=database, filt={'user': 'nobody'}) == []
