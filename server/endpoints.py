@@ -5,6 +5,8 @@ The endpoint called `endpoints` will return all available endpoints.
 import os
 from http import HTTPStatus
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from flask import Flask, request, session
 from flask_restx import Resource, Api  # , fields  # Namespace
 from flask_cors import CORS
@@ -34,6 +36,7 @@ STATES_EP = '/states'
 STATES_RESP = 'states'
 STATES_COLLECT = 'states'
 RESTAURANTS_EP = '/restaurants'
+RESTAURANT_EP = '/restaurants/<string:resid>'
 RESTAURANTS_COLLECT = 'restaurants'
 
 
@@ -199,6 +202,26 @@ class Logout(Resource):
         return {MESSAGE: 'logged out'}
 
 
+def _parse_restaurant(data):
+    """
+    Validate and normalize restaurant fields from a JSON body.
+    Returns (fields_dict, None) on success, or (None, error_message)
+    on failure.
+    """
+    if not isinstance(data, dict):
+        return None, 'JSON object required'
+    restaurant = {}
+    for field in ('name', 'city', 'cuisine', 'notes'):
+        value = data.get(field, '')
+        if not isinstance(value, str):
+            return None, f'{field} must be text'
+        value = value.strip()
+        if field in ('name', 'city') and not value:
+            return None, f'{field} required'
+        restaurant[field] = value
+    return restaurant, None
+
+
 @api.route(RESTAURANTS_EP)
 class Restaurants(Resource):
     def get(self):
@@ -216,22 +239,57 @@ class Restaurants(Resource):
         username = session.get('user')
         if not username:
             return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
-        data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return {MESSAGE: 'JSON object required'}, HTTPStatus.BAD_REQUEST
+        restaurant, error = _parse_restaurant(request.get_json(silent=True))
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
 
-        restaurant = {'user': username}
-        for field in ('name', 'city', 'cuisine', 'notes'):
-            value = data.get(field, '')
-            if not isinstance(value, str):
-                return {MESSAGE: f'{field} must be text'}, \
-                    HTTPStatus.BAD_REQUEST
-            value = value.strip()
-            if field in ('name', 'city') and not value:
-                return {MESSAGE: f'{field} required'}, HTTPStatus.BAD_REQUEST
-            restaurant[field] = value
-
+        restaurant['user'] = username
         dbc.connect_db()
         result = dbc.create(RESTAURANTS_COLLECT, restaurant)
         restaurant['_id'] = str(result.inserted_id)
         return {'restaurant': restaurant}, HTTPStatus.CREATED
+
+
+@api.route(RESTAURANT_EP)
+class Restaurant(Resource):
+    def put(self, resid):
+        """Update one of the logged-in user's restaurants."""
+        username = session.get('user')
+        if not username:
+            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        try:
+            obj_id = ObjectId(resid)
+        except (InvalidId, TypeError):
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+
+        restaurant, error = _parse_restaurant(request.get_json(silent=True))
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+
+        dbc.connect_db()
+        result = dbc.update(
+            RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username},
+            restaurant)
+        if result.matched_count == 0:
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+
+        restaurant['_id'] = resid
+        restaurant['user'] = username
+        return {'restaurant': restaurant}
+
+    def delete(self, resid):
+        """Delete one of the logged-in user's restaurants."""
+        username = session.get('user')
+        if not username:
+            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        try:
+            obj_id = ObjectId(resid)
+        except (InvalidId, TypeError):
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+
+        dbc.connect_db()
+        deleted = dbc.delete(
+            RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
+        if not deleted:
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        return {MESSAGE: 'deleted'}

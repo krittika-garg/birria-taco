@@ -1,14 +1,59 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import server.endpoints as ep
+
+A_RESID = '507f1f77bcf86cd799439011'
 
 
 @pytest.mark.parametrize('method', ['get', 'post'])
 def test_login_required(method):
     response = getattr(ep.app.test_client(), method)(ep.RESTAURANTS_EP)
     assert response.status_code == 401
+
+
+@pytest.mark.parametrize('method', ['put', 'delete'])
+def test_edit_delete_login_required(method):
+    url = ep.RESTAURANTS_EP + f'/{A_RESID}'
+    response = getattr(ep.app.test_client(), method)(url)
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize('resid', [A_RESID, 'not-an-object-id'])
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.update', autospec=True)
+@patch('data.db_connect.delete', autospec=True)
+def test_edit_delete_not_found(delete, update, connect, resid):
+    update.return_value = MagicMock(matched_count=0)
+    delete.return_value = 0
+    client = ep.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user'] = 'bob'
+    url = ep.RESTAURANTS_EP + f'/{resid}'
+    response = client.put(url, json={'name': 'Tacos', 'city': 'NY'})
+    assert response.status_code == 404
+    assert client.delete(url).status_code == 404
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.update', autospec=True)
+@patch('data.db_connect.delete', autospec=True)
+def test_edit_delete_success(delete, update, connect):
+    update.return_value = MagicMock(matched_count=1)
+    delete.return_value = 1
+    client = ep.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user'] = 'bob'
+    url = ep.RESTAURANTS_EP + f'/{A_RESID}'
+
+    response = client.put(url, json={'name': ' Tacos ', 'city': ' NY '})
+    assert response.status_code == 200
+    assert response.get_json()['restaurant'] == {
+        '_id': A_RESID, 'user': 'bob', 'name': 'Tacos', 'city': 'NY',
+        'cuisine': '', 'notes': ''}
+
+    assert client.delete(url).status_code == 200
 
 
 @pytest.mark.parametrize('payload', [

@@ -55,7 +55,12 @@ to `/restaurants`. Both endpoints return `401` when logged out.
   Text is trimmed; invalid input returns `400`.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
   logged-in user's entries, or an empty list. Entries include a string `_id`.
+- `PUT /restaurants/<id>` updates one of the logged-in user's entries using
+  the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
+- `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
+  returns `200`.
 
-Ownership comes from the session; a supplied `user` field cannot change it.
-Each saved entry is personal, and repeated entries are allowed. Ranking,
-editing, deleting, and a shared restaurant catalog are not implemented yet.
+Both `PUT` and `DELETE` return `404` for an `id` that doesn't exist or
+belongs to another user. Ownership comes from the session; a supplied `user`
+field cannot change it. Each saved entry is personal, and repeated entries
+are allowed. Ranking and a shared restaurant catalog are not implemented yet.
