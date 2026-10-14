@@ -47,20 +47,26 @@ make prod
 ## Personal restaurant list
 
 Log in through `POST /login` and include the returned session cookie on requests
-to `/restaurants`. Both endpoints return `401` when logged out.
+to `/restaurants` and `/restaurants/<id>`. All of them return `401` when
+logged out.
 
 - `POST /restaurants` saves an entry to the logged-in user's list and returns
   `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and
   `city` strings. `cuisine` and `notes` are optional strings, defaulting to empty.
+  `rating` is an optional number from 0 to 10, defaulting to `null`.
   Text is trimmed; invalid input returns `400`.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
-  logged-in user's entries, or an empty list. Entries include a string `_id`.
+  logged-in user's entries, or an empty list, highest `rating` first with
+  unrated entries last. Entries include a string `_id`.
+- `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
+  logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
   returns `200`.
 
-Both `PUT` and `DELETE` return `404` for an `id` that doesn't exist or
-belongs to another user. Ownership comes from the session; a supplied `user`
+`GET`, `PUT` and `DELETE` on `/restaurants/<id>` return `404` for an `id`
+that doesn't exist or belongs to another user. Ownership comes from the session; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries
-are allowed. Ranking and a shared restaurant catalog are not implemented yet.
+are allowed. Head-to-head ranking and a shared restaurant catalog are not
+implemented yet.

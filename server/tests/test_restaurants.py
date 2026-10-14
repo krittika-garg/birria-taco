@@ -13,7 +13,7 @@ def test_login_required(method):
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize('method', ['put', 'delete'])
+@pytest.mark.parametrize('method', ['get', 'put', 'delete'])
 def test_edit_delete_login_required(method):
     url = ep.RESTAURANTS_EP + f'/{A_RESID}'
     response = getattr(ep.app.test_client(), method)(url)
@@ -122,3 +122,30 @@ def test_list_sorted_by_rating(read, connect):
              client.get(ep.RESTAURANTS_EP).get_json()['restaurants']]
     assert names[:3] == ['c', 'a', 'e']
     assert set(names[3:]) == {'b', 'd'}
+
+
+@pytest.mark.parametrize('resid', [A_RESID, 'not-an-object-id'])
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', return_value=None, autospec=True)
+def test_get_one_not_found(read_one, connect, resid):
+    client = ep.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user'] = 'bob'
+    response = client.get(ep.RESTAURANTS_EP + f'/{resid}')
+    assert response.status_code == 404
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', autospec=True)
+def test_get_one(read_one, connect):
+    doc = {'_id': A_RESID, 'user': 'bob', 'name': 'Tacos', 'city': 'NY'}
+    read_one.return_value = doc
+    client = ep.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user'] = 'bob'
+    response = client.get(ep.RESTAURANTS_EP + f'/{A_RESID}')
+    assert response.status_code == 200
+    assert response.get_json() == {'restaurant': doc}
+    # Ownership comes from the session, so other users' entries never match.
+    filt = read_one.call_args[0][1]
+    assert filt['user'] == 'bob' and str(filt['_id']) == A_RESID

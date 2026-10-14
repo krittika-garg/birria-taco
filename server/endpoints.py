@@ -219,7 +219,32 @@ def _parse_restaurant(data):
         if field in ('name', 'city') and not value:
             return None, f'{field} required'
         restaurant[field] = value
+    rating = data.get('rating')
+    if rating is not None:
+        # bool is an int subclass; reject it explicitly
+        if (isinstance(rating, bool) or not isinstance(rating, (int, float))
+                or not isfinite(rating) or not 0 <= rating <= 10):
+            return None, 'rating must be a number from 0 to 10'
+    restaurant['rating'] = rating
     return restaurant, None
+
+
+LOGIN_REQUIRED = {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+RESTAURANT_NOT_FOUND = {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+
+
+def _owned_restaurant(resid):
+    """
+    Build a Mongo filter for restaurant `resid` owned by the logged-in user.
+    Returns (filter, None) on success, or (None, error_response) on failure.
+    """
+    username = session.get('user')
+    if not username:
+        return None, LOGIN_REQUIRED
+    try:
+        return {'_id': ObjectId(resid), 'user': username}, None
+    except (InvalidId, TypeError):
+        return None, RESTAURANT_NOT_FOUND
 
 
 @api.route(RESTAURANTS_EP)
@@ -228,17 +253,20 @@ class Restaurants(Resource):
         """Return the logged-in user's saved restaurants."""
         username = session.get('user')
         if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+            return LOGIN_REQUIRED
         dbc.connect_db()
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+        # Highest rated first; unrated entries go last.
+        restaurants.sort(key=lambda r: (r.get('rating') is None,
+                                        -(r.get('rating') or 0)))
         return {'restaurants': restaurants}
 
     def post(self):
         """Save a restaurant to the logged-in user's personal list."""
         username = session.get('user')
         if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+            return LOGIN_REQUIRED
         restaurant, error = _parse_restaurant(request.get_json(silent=True))
         if error:
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
@@ -252,44 +280,41 @@ class Restaurants(Resource):
 
 @api.route(RESTAURANT_EP)
 class Restaurant(Resource):
+    def get(self, resid):
+        """Return one of the logged-in user's restaurants."""
+        filt, error = _owned_restaurant(resid)
+        if error:
+            return error
+        dbc.connect_db()
+        restaurant = dbc.read_one(RESTAURANTS_COLLECT, filt)
+        if restaurant is None:
+            return RESTAURANT_NOT_FOUND
+        return {'restaurant': restaurant}
+
     def put(self, resid):
         """Update one of the logged-in user's restaurants."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
-        try:
-            obj_id = ObjectId(resid)
-        except (InvalidId, TypeError):
-            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
-
+        filt, error = _owned_restaurant(resid)
+        if error:
+            return error
         restaurant, error = _parse_restaurant(request.get_json(silent=True))
         if error:
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
 
         dbc.connect_db()
-        result = dbc.update(
-            RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username},
-            restaurant)
+        result = dbc.update(RESTAURANTS_COLLECT, filt, restaurant)
         if result.matched_count == 0:
-            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+            return RESTAURANT_NOT_FOUND
 
         restaurant['_id'] = resid
-        restaurant['user'] = username
+        restaurant['user'] = filt['user']
         return {'restaurant': restaurant}
 
     def delete(self, resid):
         """Delete one of the logged-in user's restaurants."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
-        try:
-            obj_id = ObjectId(resid)
-        except (InvalidId, TypeError):
-            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
-
+        filt, error = _owned_restaurant(resid)
+        if error:
+            return error
         dbc.connect_db()
-        deleted = dbc.delete(
-            RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
-        if not deleted:
-            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        if not dbc.delete(RESTAURANTS_COLLECT, filt):
+            return RESTAURANT_NOT_FOUND
         return {MESSAGE: 'deleted'}
