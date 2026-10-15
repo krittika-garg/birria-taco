@@ -24,14 +24,24 @@ PRECISION = 6
 
 def trim_ring(ring):
     """
-    Round a ring's points and drop repeats that rounding creates;
-    MongoDB's 2dsphere index rejects duplicate consecutive vertices.
+    Round a ring's points and remove what rounding breaks: repeated
+    points (A, A) and out-and-back spikes (A, B, A), including a spike
+    across the closing point. MongoDB's 2dsphere index rejects any
+    repeated vertex other than the closing one.
     """
     trimmed = []
     for lng, lat in ring:
         point = [round(lng, PRECISION), round(lat, PRECISION)]
-        if not trimmed or point != trimmed[-1]:
-            trimmed.append(point)
+        if trimmed and point == trimmed[-1]:
+            continue
+        if len(trimmed) >= 2 and point == trimmed[-2]:
+            # A, B, A: drop B; the ring is back at A already.
+            trimmed.pop()
+            continue
+        trimmed.append(point)
+    # [A, B, ..., B, A]: the spike wraps around the closing point.
+    while len(trimmed) >= 4 and trimmed[1] == trimmed[-2]:
+        trimmed = trimmed[1:-1]
     return trimmed
 
 
