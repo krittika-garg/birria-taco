@@ -47,3 +47,6 @@ jobs:
 
       - name: Test states
         run: cd states && make tests
+
+      - name: Test places
+        run: cd places && make tests
