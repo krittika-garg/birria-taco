@@ -88,6 +88,14 @@ def upsert(collection, filters, update_dict, db=SE_DB):
     )
 
 
+def create_index(collection, keys, db=SE_DB, **kwargs):
+    """
+    Create an index if it doesn't already exist.
+    keys is a list of (field, direction) pairs, as pymongo expects.
+    """
+    return client[db][collection].create_index(keys, **kwargs)
+
+
 def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
     """
     Returns a list from the db, optionally restricted by a filter.

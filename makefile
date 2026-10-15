@@ -5,6 +5,7 @@ API_DIR = server
 DB_DIR = data
 SEC_DIR = security
 STATES_DIR = states
+PLACES_DIR = places
 REQ_DIR = .
 
 FORCE:
@@ -20,6 +21,7 @@ all_tests: FORCE
 	cd $(DB_DIR); make tests
 	cd $(SEC_DIR); make tests
 	cd $(STATES_DIR); make tests
+	cd $(PLACES_DIR); make tests
 
 dev_env: FORCE
 	pip install -r $(REQ_DIR)/requirements-dev.txt
