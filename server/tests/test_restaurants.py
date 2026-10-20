@@ -51,7 +51,7 @@ def test_edit_delete_success(delete, update, connect):
     assert response.status_code == 200
     assert response.get_json()['restaurant'] == {
         '_id': A_RESID, 'user': 'bob', 'name': 'Tacos', 'city': 'NY',
-        'cuisine': '', 'notes': ''}
+        'cuisine': '', 'notes': '', 'rating': None}
 
     assert client.delete(url).status_code == 200
 
@@ -59,6 +59,9 @@ def test_edit_delete_success(delete, update, connect):
 @pytest.mark.parametrize('payload', [
     {}, [], {'name': 'Tacos'}, {'name': ' ', 'city': 'NY'},
     {'name': 'Tacos', 'city': 'NY', 'notes': 42},
+    {'name': 'Tacos', 'city': 'NY', 'rating': 11},
+    {'name': 'Tacos', 'city': 'NY', 'rating': '9'},
+    {'name': 'Tacos', 'city': 'NY', 'rating': True},
 ])
 @patch('data.db_connect.create', autospec=True)
 def test_invalid_restaurant(create, payload):
@@ -83,8 +86,22 @@ def test_personal_list(create, read, connect):
         assert response.status_code == 201
         assert response.get_json()['restaurant'] == {
             '_id': '123', 'user': username, 'name': 'Tacos', 'city': 'NY',
-            'cuisine': '', 'notes': ''}
+            'cuisine': '', 'notes': '', 'rating': None}
         response = client.get(ep.RESTAURANTS_EP + '?user=someone-else')
         assert response.get_json() == {'restaurants': []}
         read.assert_called_with(ep.RESTAURANTS_COLLECT, no_id=False,
                                 filt={'user': username})
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', autospec=True)
+def test_list_sorted_by_rating(read, connect):
+    read.return_value = [{'name': 'a', 'rating': 5}, {'name': 'b'},
+                         {'name': 'c', 'rating': 9.5},
+                         {'name': 'd', 'rating': 0}]
+    client = ep.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user'] = 'bob'
+    names = [r['name'] for r in
+             client.get(ep.RESTAURANTS_EP).get_json()['restaurants']]
+    assert names == ['c', 'a', 'd', 'b']

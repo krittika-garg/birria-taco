@@ -219,6 +219,12 @@ def _parse_restaurant(data):
         if field in ('name', 'city') and not value:
             return None, f'{field} required'
         restaurant[field] = value
+    rating = data.get('rating')
+    if rating is not None and (
+            isinstance(rating, bool) or not isinstance(rating, (int, float))
+            or not 0 <= rating <= 10):
+        return None, 'rating must be a number from 0 to 10'
+    restaurant['rating'] = rating
     return restaurant, None
 
 
@@ -232,6 +238,9 @@ class Restaurants(Resource):
         dbc.connect_db()
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+        # Best-rated first; unrated entries last.
+        restaurants.sort(key=lambda r: (r.get('rating') is None,
+                                        -(r.get('rating') or 0)))
         return {'restaurants': restaurants}
 
     def post(self):

@@ -52,9 +52,11 @@ to `/restaurants`. Both endpoints return `401` when logged out.
 - `POST /restaurants` saves an entry to the logged-in user's list and returns
   `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and
   `city` strings. `cuisine` and `notes` are optional strings, defaulting to empty.
+  `rating` is an optional number from 0 to 10, defaulting to `null`.
   Text is trimmed; invalid input returns `400`.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
-  logged-in user's entries, or an empty list. Entries include a string `_id`.
+  logged-in user's entries, or an empty list, sorted by `rating` (highest
+  first, unrated last). Entries include a string `_id`.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
@@ -63,4 +65,5 @@ to `/restaurants`. Both endpoints return `401` when logged out.
 Both `PUT` and `DELETE` return `404` for an `id` that doesn't exist or
 belongs to another user. Ownership comes from the session; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries
-are allowed. Ranking and a shared restaurant catalog are not implemented yet.
+are allowed. Comparison-based ranking and a shared restaurant catalog are not implemented
+yet.
