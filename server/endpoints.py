@@ -15,6 +15,7 @@ from flask_cors import CORS
 
 import data.db_connect as dbc
 import security.auth as auth
+from places.load import NEIGHBORHOOD, PLACES_COLLECT, geo_point
 from math import atan2, cos, isfinite, radians, sin, sqrt
 
 app = Flask(__name__)
@@ -38,6 +39,7 @@ STATES_COLLECT = 'states'
 RESTAURANTS_EP = '/restaurants'
 RESTAURANT_EP = '/restaurants/<string:resid>'
 RESTAURANTS_COLLECT = 'restaurants'
+NEIGHBORHOOD_AT_EP = '/neighborhoods/at'
 
 
 @api.route(HELLO_EP)
@@ -108,6 +110,29 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
+def _parse_lat_lon():
+    """
+    Read lat and lon from the query string.
+    Returns ((lat, lon), None) on success, or (None, error_message)
+    on failure.
+    """
+    try:
+        lat = float(request.args.get('lat', ''))
+        lon = float(request.args.get('lon', ''))
+    except (TypeError, ValueError):
+        return None, 'Provide numeric lat and lon query parameters'
+
+    if (
+        not isfinite(lat)
+        or not isfinite(lon)
+        or not -90 <= lat <= 90
+        or not -180 <= lon <= 180
+    ):
+        return None, ('lat must be between -90 and 90; '
+                      'lon must be between -180 and 180')
+    return (lat, lon), None
+
+
 @api.route('/states/nearest')
 class NearestState(Resource):
     def get(self):
@@ -115,24 +140,10 @@ class NearestState(Resource):
         Return the nearest stored state coordinate
         to the supplied current location.
         """
-        try:
-            lat = float(request.args.get('lat', ''))
-            lon = float(request.args.get('lon', ''))
-        except (TypeError, ValueError):
-            return {
-                MESSAGE: 'Provide numeric lat and lon query parameters'
-            }, HTTPStatus.BAD_REQUEST
-
-        if (
-            not isfinite(lat)
-            or not isfinite(lon)
-            or not -90 <= lat <= 90
-            or not -180 <= lon <= 180
-        ):
-            return {
-                MESSAGE: 'lat must be between -90 and 90; '
-                         'lon must be between -180 and 180'
-            }, HTTPStatus.BAD_REQUEST
+        coords, error = _parse_lat_lon()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        lat, lon = coords
 
         dbc.connect_db()
         states = dbc.read(STATES_COLLECT)
@@ -156,6 +167,31 @@ class NearestState(Resource):
             'state': nearest,
             'distance_km': round(distance, 2),
         }
+
+
+@api.route(NEIGHBORHOOD_AT_EP)
+class NeighborhoodAt(Resource):
+    def get(self):
+        """
+        Return the neighborhood whose boundary contains lat, lon.
+        """
+        coords, error = _parse_lat_lon()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        lat, lon = coords
+
+        dbc.connect_db()
+        neighborhood = dbc.read_one(PLACES_COLLECT, {
+            'type': NEIGHBORHOOD,
+            'boundary': {'$geoIntersects': {'$geometry': geo_point(lat, lon)}},
+        })
+        if neighborhood is None:
+            return {
+                MESSAGE: 'No neighborhood found at that location'
+            }, HTTPStatus.NOT_FOUND
+        neighborhood.pop('_id', None)
+        neighborhood.pop('boundary', None)
+        return {'neighborhood': neighborhood}
 
 
 def _credentials():
