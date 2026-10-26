@@ -207,3 +207,15 @@ def test_login_without_jwt_secret(mock_login, monkeypatch):
         ep.LOGIN_EP, json={'username': 'bob', 'password': 'pw'})
     assert response.status_code == SERVICE_UNAVAILABLE
     assert 'access_token' not in response.get_json()
+
+
+@pytest.mark.parametrize('payload', [[1], 42, 'hello', True, None])
+@pytest.mark.parametrize('endpoint', [ep.LOGIN_EP, ep.REGISTER_EP])
+@patch('security.auth.login', autospec=True)
+@patch('security.auth.register', autospec=True)
+def test_credentials_reject_non_objects(register, login, endpoint, payload):
+    response = ep.app.test_client().post(endpoint, json=payload)
+    expected = 401 if endpoint == ep.LOGIN_EP else 400
+    assert response.status_code == expected
+    register.assert_not_called()
+    login.assert_not_called()

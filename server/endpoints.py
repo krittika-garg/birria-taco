@@ -198,7 +198,9 @@ class NeighborhoodAt(Resource):
 
 
 def _credentials():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
     username, password = data.get('username'), data.get('password')
     if not (isinstance(username, str) and isinstance(password, str)
             and username and password):
