@@ -46,8 +46,25 @@ make prod
 
 ## Personal restaurant list
 
-Log in through `POST /login` and include the returned session cookie on requests
-to `/restaurants`. Both endpoints return `401` when logged out.
+Set a private `JWT_SECRET_KEY` in your gitignored `.env` before starting
+the server with `./local.sh`. Use a randomly generated key of at least 32 bytes.
+For deployment, configure a persistent key in the hosting environment.
+
+Log in through `POST /login` with JSON `{"username": "...", "password": "..."}`.
+The response contains `access_token`, `token_type` (`Bearer`), and
+`expires_in` (900 seconds). Include the token on all restaurant requests:
+
+~~~text
+Authorization: Bearer YOUR_ACCESS_TOKEN
+~~~
+
+Missing, invalid, or expired tokens return `401`. Session cookies alone no
+longer authorize restaurant requests. Missing JWT configuration returns `503`
+when issuing a token or validating a supplied Bearer token.
+
+Tokens expire after 15 minutes. Refresh tokens are not implemented yet.
+On logout, the frontend must discard its token. `POST /logout` clears legacy
+session data but does not revoke an issued JWT.
 
 - `POST /restaurants` saves an entry to the logged-in user's list and returns
   `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and
@@ -63,7 +80,7 @@ to `/restaurants`. Both endpoints return `401` when logged out.
   returns `200`.
 
 Both `PUT` and `DELETE` return `404` for an `id` that doesn't exist or
-belongs to another user. Ownership comes from the session; a supplied `user`
+belongs to another user. Ownership comes from the verified JWT; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries
 are allowed. Comparison-based ranking and a shared restaurant catalog are not implemented
 yet.

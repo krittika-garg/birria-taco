@@ -1,7 +1,5 @@
 from http.client import (
     BAD_REQUEST,
-    FORBIDDEN,
-    NOT_ACCEPTABLE,
     NOT_FOUND,
     OK,
     SERVICE_UNAVAILABLE,
@@ -12,6 +10,17 @@ from unittest.mock import patch
 import pytest
 
 import server.endpoints as ep
+
+
+from security.tokens import decode_access_token
+
+TEST_JWT_SECRET = 'test-only-secret-key-at-least-32-characters'
+
+
+@pytest.fixture(autouse=True)
+def jwt_config(monkeypatch):
+    monkeypatch.setitem(ep.app.config, 'JWT_SECRET_KEY', TEST_JWT_SECRET)
+
 
 TEST_CLIENT = ep.app.test_client()
 
@@ -53,13 +62,17 @@ def test_register_taken(mock_reg):
 @patch('security.auth.login', return_value=True, autospec=True)
 def test_login_logout(mock_login):
     client = ep.app.test_client()
-    resp = client.post(ep.LOGIN_EP, json={'username': 'bob', 'password': 'pw'})
+    resp = client.post(ep.LOGIN_EP, json={
+        'username': 'bob', 'password': 'pw'})
     assert resp.status_code == OK
-    with client.session_transaction() as sess:
-        assert sess['user'] == 'bob'
-    client.post(ep.LOGOUT_EP)
+    body = resp.get_json()
+    assert body['token_type'] == 'Bearer'
+    assert body['expires_in'] == 900
+    claims = decode_access_token(body['access_token'], TEST_JWT_SECRET)
+    assert claims['sub'] == 'bob'
     with client.session_transaction() as sess:
         assert 'user' not in sess
+    assert client.post(ep.LOGOUT_EP).status_code == OK
 
 
 @patch('security.auth.login', return_value=False, autospec=True)
@@ -185,3 +198,12 @@ def test_neighborhood_at_bad_params(params):
 def test_neighborhood_at_in_endpoints():
     resp = TEST_CLIENT.get(ep.ENDPOINT_EP)
     assert ep.NEIGHBORHOOD_AT_EP in resp.get_json()[ep.ENDPOINT_RESP]
+
+
+@patch('security.auth.login', return_value=True, autospec=True)
+def test_login_without_jwt_secret(mock_login, monkeypatch):
+    monkeypatch.setitem(ep.app.config, 'JWT_SECRET_KEY', None)
+    response = ep.app.test_client().post(
+        ep.LOGIN_EP, json={'username': 'bob', 'password': 'pw'})
+    assert response.status_code == SERVICE_UNAVAILABLE
+    assert 'access_token' not in response.get_json()

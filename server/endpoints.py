@@ -7,7 +7,7 @@ from http import HTTPStatus
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from flask import Flask, request, session
+from flask import Flask, g, request, session
 from flask_restx import Resource, Api  # , fields  # Namespace
 from flask_cors import CORS
 
@@ -15,6 +15,8 @@ from flask_cors import CORS
 
 import data.db_connect as dbc
 import security.auth as auth
+from security.jwt_auth import login_required
+from security.tokens import ACCESS_TOKEN_MINUTES, create_access_token
 from places.load import NEIGHBORHOOD, PLACES_COLLECT, geo_point
 from math import atan2, cos, isfinite, radians, sin, sqrt
 
@@ -22,6 +24,7 @@ app = Flask(__name__)
 # Set SECRET_KEY in prod; the random fallback resets sessions on restart.
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
+app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
 CORS(app)
 api = Api(app)
 
@@ -222,13 +225,21 @@ class Register(Resource):
 class Login(Resource):
     def post(self):
         """
-        Log in with JSON {username, password}; sets a session cookie.
+        Log in with JSON {username, password}; returns a JWT access token.
         """
         creds = _credentials()
         if not creds or not auth.login(*creds):
             return {MESSAGE: 'invalid credentials'}, HTTPStatus.UNAUTHORIZED
-        session['user'] = creds[0]
-        return {MESSAGE: 'logged in'}
+        secret = app.config.get('JWT_SECRET_KEY')
+        if not secret:
+            return {MESSAGE: 'Authentication unavailable'}, \
+                HTTPStatus.SERVICE_UNAVAILABLE
+        session.clear()
+        return {
+            'access_token': create_access_token(creds[0], secret),
+            'token_type': 'Bearer',
+            'expires_in': ACCESS_TOKEN_MINUTES * 60,
+        }
 
 
 @api.route(LOGOUT_EP)
@@ -266,11 +277,11 @@ def _parse_restaurant(data):
 
 @api.route(RESTAURANTS_EP)
 class Restaurants(Resource):
+    method_decorators = [login_required]
+
     def get(self):
         """Return the logged-in user's saved restaurants."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        username = g.current_user
         dbc.connect_db()
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
@@ -281,9 +292,7 @@ class Restaurants(Resource):
 
     def post(self):
         """Save a restaurant to the logged-in user's personal list."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        username = g.current_user
         restaurant, error = _parse_restaurant(request.get_json(silent=True))
         if error:
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
@@ -297,11 +306,11 @@ class Restaurants(Resource):
 
 @api.route(RESTAURANT_EP)
 class Restaurant(Resource):
+    method_decorators = [login_required]
+
     def put(self, resid):
         """Update one of the logged-in user's restaurants."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        username = g.current_user
         try:
             obj_id = ObjectId(resid)
         except (InvalidId, TypeError):
@@ -324,9 +333,7 @@ class Restaurant(Resource):
 
     def delete(self, resid):
         """Delete one of the logged-in user's restaurants."""
-        username = session.get('user')
-        if not username:
-            return {MESSAGE: 'Login required'}, HTTPStatus.UNAUTHORIZED
+        username = g.current_user
         try:
             obj_id = ObjectId(resid)
         except (InvalidId, TypeError):
