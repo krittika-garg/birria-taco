@@ -113,6 +113,28 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 6371.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
+LAT_LON_NUMERIC_ERROR = 'Provide numeric lat and lon query parameters'
+LAT_LON_BODY_NUMERIC_ERROR = 'lat and lon must be numbers'
+LAT_LON_RANGE_ERROR = ('lat must be between -90 and 90; '
+                       'lon must be between -180 and 180')
+
+
+def _lat_lon_error(lat, lon):
+    """
+    Return LAT_LON_RANGE_ERROR if lat or lon is non-finite or out of
+    range, else None.
+    """
+    # Range first: isfinite() overflows on huge ints from a JSON body.
+    if (
+        not -90 <= lat <= 90
+        or not -180 <= lon <= 180
+        or not isfinite(lat)
+        or not isfinite(lon)
+    ):
+        return LAT_LON_RANGE_ERROR
+    return None
+
+
 def _parse_lat_lon():
     """
     Read lat and lon from the query string.
@@ -123,17 +145,29 @@ def _parse_lat_lon():
         lat = float(request.args.get('lat', ''))
         lon = float(request.args.get('lon', ''))
     except (TypeError, ValueError):
-        return None, 'Provide numeric lat and lon query parameters'
+        return None, LAT_LON_NUMERIC_ERROR
 
-    if (
-        not isfinite(lat)
-        or not isfinite(lon)
-        or not -90 <= lat <= 90
-        or not -180 <= lon <= 180
-    ):
-        return None, ('lat must be between -90 and 90; '
-                      'lon must be between -180 and 180')
+    error = _lat_lon_error(lat, lon)
+    if error:
+        return None, error
     return (lat, lon), None
+
+
+def find_neighborhood(lat, lon):
+    """
+    Return the neighborhood whose boundary contains lat, lon, without
+    _id and boundary, or None if no neighborhood contains it.
+    """
+    dbc.connect_db()
+    neighborhood = dbc.read_one(PLACES_COLLECT, {
+        'type': NEIGHBORHOOD,
+        'boundary': {'$geoIntersects': {'$geometry': geo_point(lat, lon)}},
+    })
+    if neighborhood is None:
+        return None
+    neighborhood.pop('_id', None)
+    neighborhood.pop('boundary', None)
+    return neighborhood
 
 
 @api.route('/states/nearest')
@@ -181,19 +215,11 @@ class NeighborhoodAt(Resource):
         coords, error = _parse_lat_lon()
         if error:
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
-        lat, lon = coords
-
-        dbc.connect_db()
-        neighborhood = dbc.read_one(PLACES_COLLECT, {
-            'type': NEIGHBORHOOD,
-            'boundary': {'$geoIntersects': {'$geometry': geo_point(lat, lon)}},
-        })
+        neighborhood = find_neighborhood(*coords)
         if neighborhood is None:
             return {
                 MESSAGE: 'No neighborhood found at that location'
             }, HTTPStatus.NOT_FOUND
-        neighborhood.pop('_id', None)
-        neighborhood.pop('boundary', None)
         return {'neighborhood': neighborhood}
 
 
@@ -274,7 +300,32 @@ def _parse_restaurant(data):
             or not 0 <= rating <= 10):
         return None, 'rating must be a number from 0 to 10'
     restaurant['rating'] = rating
+
+    lat, lon = data.get('lat'), data.get('lon')
+    if (lat is None) != (lon is None):
+        return None, 'lat and lon must be given together'
+    if lat is not None:
+        if any(isinstance(v, bool) or not isinstance(v, (int, float))
+               for v in (lat, lon)):
+            return None, LAT_LON_BODY_NUMERIC_ERROR
+        error = _lat_lon_error(lat, lon)
+        if error:
+            return None, error
+        restaurant['location'] = geo_point(lat, lon)
     return restaurant, None
+
+
+def _tag_neighborhood(restaurant):
+    """
+    Set restaurant['neighborhood'] to the name, borough and code of the
+    neighborhood containing its location, or None.
+    """
+    found = None
+    if restaurant.get('location'):
+        lon, lat = restaurant['location']['coordinates']
+        found = find_neighborhood(lat, lon)
+    restaurant['neighborhood'] = None if found is None else {
+        key: found.get(key) for key in ('name', 'borough', 'code')}
 
 
 @api.route(RESTAURANTS_EP)
@@ -300,6 +351,7 @@ class Restaurants(Resource):
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
 
         restaurant['user'] = username
+        _tag_neighborhood(restaurant)
         dbc.connect_db()
         result = dbc.create(RESTAURANTS_COLLECT, restaurant)
         restaurant['_id'] = str(result.inserted_id)
@@ -322,6 +374,9 @@ class Restaurant(Resource):
         if error:
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
 
+        # $set only touches given fields; clear any old location.
+        restaurant.setdefault('location', None)
+        _tag_neighborhood(restaurant)
         dbc.connect_db()
         result = dbc.update(
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username},

@@ -64,7 +64,8 @@ def test_edit_delete_success(delete, update, connect):
     assert response.status_code == 200
     assert response.get_json()['restaurant'] == {
         '_id': A_RESID, 'user': 'bob', 'name': 'Tacos', 'city': 'NY',
-        'cuisine': '', 'notes': '', 'rating': None}
+        'cuisine': '', 'notes': '', 'rating': None, 'location': None,
+        'neighborhood': None}
 
     assert client.delete(url).status_code == 200
 
@@ -101,7 +102,8 @@ def test_personal_list(create, read, connect):
         assert response.status_code == 201
         assert response.get_json()['restaurant'] == {
             '_id': '123', 'user': username, 'name': 'Tacos', 'city': 'NY',
-            'cuisine': '', 'notes': '', 'rating': None}
+            'cuisine': '', 'notes': '', 'rating': None,
+            'neighborhood': None}
         response = client.get(ep.RESTAURANTS_EP + '?user=someone-else')
         assert response.get_json() == {'restaurants': []}
         read.assert_called_with(ep.RESTAURANTS_COLLECT, no_id=False,
@@ -121,6 +123,149 @@ def test_list_sorted_by_rating(read, connect):
     names = [r['name'] for r in
              client.get(ep.RESTAURANTS_EP).get_json()['restaurants']]
     assert names == ['c', 'a', 'd', 'b']
+
+
+SOHO = {
+    '_id': 'nyc-soho', 'type': 'neighborhood', 'name': 'SoHo',
+    'borough': 'Manhattan', 'code': 'MN0201',
+    'boundary': {'type': 'MultiPolygon', 'coordinates': []},
+}
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', return_value=dict(SOHO), autospec=True)
+@patch('data.db_connect.create', autospec=True)
+def test_create_in_neighborhood(create, read_one, connect):
+    create.return_value.inserted_id = '123'
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.post(ep.RESTAURANTS_EP, json={
+        'name': 'Tacos', 'city': 'NY', 'lat': 40.72, 'lon': -74.0})
+    assert response.status_code == 201
+    restaurant = response.get_json()['restaurant']
+    assert restaurant['location'] == {
+        'type': 'Point', 'coordinates': [-74.0, 40.72]}
+    assert restaurant['neighborhood'] == {
+        'name': 'SoHo', 'borough': 'Manhattan', 'code': 'MN0201'}
+    stored = create.call_args.args[1]
+    assert stored['location'] == restaurant['location']
+    assert stored['neighborhood'] == restaurant['neighborhood']
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', return_value=None, autospec=True)
+@patch('data.db_connect.create', autospec=True)
+def test_create_outside_neighborhoods(create, read_one, connect):
+    create.return_value.inserted_id = '123'
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.post(ep.RESTAURANTS_EP, json={
+        'name': 'Tacos', 'city': 'NY', 'lat': 0, 'lon': 0})
+    assert response.status_code == 201
+    restaurant = response.get_json()['restaurant']
+    assert restaurant['location'] == {
+        'type': 'Point', 'coordinates': [0.0, 0.0]}
+    assert restaurant['neighborhood'] is None
+    assert create.call_args.args[1]['neighborhood'] is None
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', autospec=True)
+@patch('data.db_connect.create', autospec=True)
+def test_create_without_location(create, read_one, connect):
+    create.return_value.inserted_id = '123'
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.post(
+        ep.RESTAURANTS_EP, json={'name': 'Tacos', 'city': 'NY'})
+    assert response.status_code == 201
+    restaurant = response.get_json()['restaurant']
+    assert 'location' not in restaurant
+    assert restaurant['neighborhood'] is None
+    read_one.assert_not_called()
+
+
+@pytest.mark.parametrize('coords,message', [
+    ({'lat': 40.72}, 'lat and lon must be given together'),
+    ({'lon': -74.0}, 'lat and lon must be given together'),
+    ({'lat': '40.72', 'lon': -74.0}, 'lat and lon must be numbers'),
+    ({'lat': True, 'lon': -74.0}, 'lat and lon must be numbers'),
+    ({'lat': 91, 'lon': -74.0}, ep.LAT_LON_RANGE_ERROR),
+    ({'lat': 40.72, 'lon': -181}, ep.LAT_LON_RANGE_ERROR),
+    ({'lat': 10 ** 400, 'lon': 0}, ep.LAT_LON_RANGE_ERROR),
+])
+@patch('data.db_connect.create', autospec=True)
+def test_invalid_location(create, coords, message):
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.post(
+        ep.RESTAURANTS_EP, json={'name': 'Tacos', 'city': 'NY', **coords})
+    assert response.status_code == 400
+    assert response.get_json()[ep.MESSAGE] == message
+    create.assert_not_called()
+
+
+@patch('data.db_connect.create', autospec=True)
+def test_nan_location(create):
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    # json= can't encode NaN; Flask's parser accepts the raw literal.
+    response = client.post(
+        ep.RESTAURANTS_EP, content_type='application/json',
+        data='{"name": "Tacos", "city": "NY", "lat": NaN, "lon": 0}')
+    assert response.status_code == 400
+    assert response.get_json()[ep.MESSAGE] == ep.LAT_LON_RANGE_ERROR
+    create.assert_not_called()
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', return_value=dict(SOHO), autospec=True)
+@patch('data.db_connect.update', autospec=True)
+def test_update_with_location(update, read_one, connect):
+    update.return_value = MagicMock(matched_count=1)
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.put(
+        ep.RESTAURANTS_EP + f'/{A_RESID}',
+        json={'name': 'Tacos', 'city': 'NY', 'lat': 40.72, 'lon': -74.0})
+    assert response.status_code == 200
+    stored = update.call_args.args[2]
+    assert stored['location']['coordinates'] == [-74.0, 40.72]
+    assert stored['neighborhood']['name'] == 'SoHo'
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', autospec=True)
+@patch('data.db_connect.update', autospec=True)
+def test_update_without_location_clears_it(update, read_one, connect):
+    update.return_value = MagicMock(matched_count=1)
+    client = ep.app.test_client()
+    token = create_access_token(
+        'bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.put(
+        ep.RESTAURANTS_EP + f'/{A_RESID}',
+        json={'name': 'Tacos', 'city': 'NY'})
+    assert response.status_code == 200
+    stored = update.call_args.args[2]
+    assert stored['location'] is None
+    assert stored['neighborhood'] is None
+    restaurant = response.get_json()['restaurant']
+    assert restaurant['location'] is None
+    assert restaurant['neighborhood'] is None
+    read_one.assert_not_called()
 
 
 @pytest.mark.parametrize('method,path', [
