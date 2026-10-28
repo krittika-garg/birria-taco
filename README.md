@@ -39,6 +39,13 @@ make all_tests
 ~~~
 The API will be available at http://127.0.0.1:8000.
 
+### Where endpoints live
+Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,
+`states.py`, `neighborhoods.py`, ...) with its own Flask-RESTX `Namespace`, and
+its own test file in `server/tests/`. `server/endpoints.py` only creates the app
+and registers each namespace. Add a new feature as a new module rather than
+growing an existing one.
+
 ### Build for production
 ~~~
 make prod
