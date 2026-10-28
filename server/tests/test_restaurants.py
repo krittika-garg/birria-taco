@@ -24,7 +24,7 @@ def test_login_required(method):
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize('method', ['put', 'delete'])
+@pytest.mark.parametrize('method', ['get', 'put', 'delete'])
 def test_edit_delete_login_required(method):
     url = ep.RESTAURANTS_EP + f'/{A_RESID}'
     response = getattr(ep.app.test_client(), method)(url)
@@ -33,9 +33,10 @@ def test_edit_delete_login_required(method):
 
 @pytest.mark.parametrize('resid', [A_RESID, 'not-an-object-id'])
 @patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', return_value=None, autospec=True)
 @patch('data.db_connect.update', autospec=True)
 @patch('data.db_connect.delete', autospec=True)
-def test_edit_delete_not_found(delete, update, connect, resid):
+def test_edit_delete_not_found(delete, update, read_one, connect, resid):
     update.return_value = MagicMock(matched_count=0)
     delete.return_value = 0
     client = ep.app.test_client()
@@ -43,6 +44,7 @@ def test_edit_delete_not_found(delete, update, connect, resid):
         'bob', TEST_JWT_SECRET)
     client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
     url = ep.RESTAURANTS_EP + f'/{resid}'
+    assert client.get(url).status_code == 404
     response = client.put(url, json={'name': 'Tacos', 'city': 'NY'})
     assert response.status_code == 404
     assert client.delete(url).status_code == 404
@@ -290,3 +292,17 @@ def test_reject_bad_auth(connect, method, path, kind):
     response = getattr(client, method)(path, headers=headers)
     assert response.status_code == 401
     connect.assert_not_called()
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read_one', autospec=True)
+def test_get_one(read_one, connect):
+    read_one.return_value = {'_id': A_RESID, 'user': 'bob', 'name': 'Tacos'}
+    client = ep.app.test_client()
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    response = client.get(ep.RESTAURANTS_EP + f'/{A_RESID}')
+    assert response.status_code == 200
+    assert response.get_json() == {'restaurant': read_one.return_value}
+    filt = read_one.call_args.args[1]
+    assert filt['user'] == 'bob' and str(filt['_id']) == A_RESID

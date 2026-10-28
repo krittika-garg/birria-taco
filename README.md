@@ -74,13 +74,15 @@ session data but does not revoke an issued JWT.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
   logged-in user's entries, or an empty list, sorted by `rating` (highest
   first, unrated last). Entries include a string `_id`.
+- `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
+  logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
   returns `200`.
 
-Both `PUT` and `DELETE` return `404` for an `id` that doesn't exist or
-belongs to another user. Ownership comes from the verified JWT; a supplied `user`
+`GET`, `PUT`, and `DELETE` on `/restaurants/<id>` return `404` for an `id`
+that doesn't exist or belongs to another user. Ownership comes from the verified JWT; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries
 are allowed. Comparison-based ranking and a shared restaurant catalog are not implemented
 yet.

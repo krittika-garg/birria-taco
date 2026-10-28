@@ -362,6 +362,21 @@ class Restaurants(Resource):
 class Restaurant(Resource):
     method_decorators = [login_required]
 
+    def get(self, resid):
+        """Return one of the logged-in user's restaurants."""
+        username = g.current_user
+        try:
+            obj_id = ObjectId(resid)
+        except (InvalidId, TypeError):
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+
+        dbc.connect_db()
+        restaurant = dbc.read_one(
+            RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
+        if restaurant is None:
+            return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        return {'restaurant': restaurant}
+
     def put(self, resid):
         """Update one of the logged-in user's restaurants."""
         username = g.current_user
