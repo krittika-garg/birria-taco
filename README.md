@@ -88,6 +88,29 @@ session data but does not revoke an issued JWT.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
   returns `200`.
 
+## Ranking a restaurant
+
+Ranking places one of your saved restaurants into your list by asking
+"which was better?" a few times (a binary search, so about log2 of the
+bucket's size). Your list is ordered best first: `liked`, then `fine`,
+then `disliked`. Both endpoints need the Bearer token.
+
+- `POST /rank-sessions` with `{"restaurant_id": "...", "bucket": "liked"}`
+  starts a session and returns `201`. If that bucket is empty the place is
+  saved straight away: `{"done": true, "position": 0}`. Otherwise the response
+  is `{"done": false, "session_id": "...", "compare": {restaurant}}`.
+  Unknown or another user's restaurant returns `404`; one already in your
+  list returns `409`.
+- `POST /rank-sessions/<session_id>/answer` with `{"answer": "better"}`
+  says whether the new place is `better` or `worse` than `compare`, or
+  `same` to put it right there. Returns the next `compare`, or
+  `{"done": true, "position": n}` once it is saved (`n` counts from 0 across
+  the whole list). Sessions expire after 15 minutes (`404`).
+
+Every `better`/`worse` answer is also stored in `comparisons` for the city
+leaderboard. Not yet: re-ranking a place already in your list, an endpoint to
+read your ranked list, and protection against two tabs ranking at once.
+
 `GET`, `PUT`, and `DELETE` on `/restaurants/<id>` return `404` for an `id`
 that doesn't exist or belongs to another user. Ownership comes from the verified JWT; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries

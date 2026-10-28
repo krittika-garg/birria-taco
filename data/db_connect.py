@@ -77,6 +77,15 @@ def update(collection, filters, update_dict, db=SE_DB):
     return client[db][collection].update_one(filters, {'$set': update_dict})
 
 
+def update_raw(collection, filters, update_doc, db=SE_DB, upsert=False):
+    """
+    Update one doc with a full update document, for operators beyond
+    $set (e.g. {'$push': ..., '$inc': ...}).
+    """
+    return client[db][collection].update_one(
+        filters, update_doc, upsert=upsert)
+
+
 def upsert(collection, filters, update_dict, db=SE_DB):
     """
     Update a matching document, or insert it if none exists.
