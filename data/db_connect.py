@@ -3,6 +3,7 @@ All interaction with MongoDB should be through this file!
 We may be required to use a new database at any point.
 """
 import os
+from functools import wraps
 
 import pymongo as pm
 
@@ -40,12 +41,22 @@ def connect_db():
     return client
 
 
+def needs_connection(fn):
+    """Ensure a database client exists before a DB operation."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        connect_db()
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def convert_mongo_id(doc: dict):
     if MONGO_ID in doc:
         # Convert mongo ID to a string so it works as JSON
         doc[MONGO_ID] = str(doc[MONGO_ID])
 
 
+@needs_connection
 def create(collection, doc, db=SE_DB):
     """
     Insert a single doc into collection.
@@ -54,6 +65,7 @@ def create(collection, doc, db=SE_DB):
     return client[db][collection].insert_one(doc)
 
 
+@needs_connection
 def read_one(collection, filt, db=SE_DB):
     """
     Find with a filter and return on the first doc found.
@@ -64,6 +76,7 @@ def read_one(collection, filt, db=SE_DB):
         return doc
 
 
+@needs_connection
 def delete(collection: str, filt: dict, db=SE_DB):
     """
     Find with a filter and return on the first doc found.
@@ -73,10 +86,12 @@ def delete(collection: str, filt: dict, db=SE_DB):
     return del_result.deleted_count
 
 
+@needs_connection
 def update(collection, filters, update_dict, db=SE_DB):
     return client[db][collection].update_one(filters, {'$set': update_dict})
 
 
+@needs_connection
 def upsert(collection, filters, update_dict, db=SE_DB):
     """
     Update a matching document, or insert it if none exists.
@@ -88,6 +103,7 @@ def upsert(collection, filters, update_dict, db=SE_DB):
     )
 
 
+@needs_connection
 def create_index(collection, keys, db=SE_DB, **kwargs):
     """
     Create an index if it doesn't already exist.
@@ -96,6 +112,7 @@ def create_index(collection, keys, db=SE_DB, **kwargs):
     return client[db][collection].create_index(keys, **kwargs)
 
 
+@needs_connection
 def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
     """
     Returns a list from the db, optionally restricted by a filter.
@@ -110,6 +127,7 @@ def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
     return ret
 
 
+@needs_connection
 def read_dict(collection, key, db=SE_DB, no_id=True) -> dict:
     recs = read(collection, db=db, no_id=no_id)
     recs_as_dict = {}
@@ -118,6 +136,7 @@ def read_dict(collection, key, db=SE_DB, no_id=True) -> dict:
     return recs_as_dict
 
 
+@needs_connection
 def fetch_all_as_dict(key, collection, db=SE_DB):
     ret = {}
     for doc in client[db][collection].find():
