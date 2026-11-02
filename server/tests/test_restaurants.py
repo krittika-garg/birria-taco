@@ -308,3 +308,118 @@ def test_get_one(read_one, connect):
     assert response.get_json() == {'restaurant': read_one.return_value}
     filt = read_one.call_args.args[1]
     assert filt['user'] == 'bob' and str(filt['_id']) == A_RESID
+
+
+NEAR_LAT, NEAR_LON = 40.72, -74.0
+
+
+def _authed_client(username='bob'):
+    client = app.test_client()
+    token = create_access_token(username, TEST_JWT_SECRET)
+    client.environ_base['HTTP_AUTHORIZATION'] = f'Bearer {token}'
+    return client
+
+
+def _near_filter(lat, lon, radius_km, username='bob'):
+    return {
+        'user': username,
+        'location': {'$geoWithin': {'$centerSphere': [
+            [lon, lat], radius_km / 6371]}},
+    }
+
+
+def _saved(name, lat, lon):
+    return {'_id': name, 'user': 'bob', 'name': name,
+            'location': {'type': 'Point', 'coordinates': [lon, lat]}}
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', autospec=True)
+def test_nearby_sorted_by_distance(read, connect):
+    read.return_value = [
+        _saved('far', 40.73, -74.0),
+        _saved('here', NEAR_LAT, NEAR_LON),
+        _saved('near', 40.721, -74.0),
+    ]
+    response = _authed_client().get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': NEAR_LAT, 'lon': NEAR_LON, 'radius_km': 5})
+    assert response.status_code == 200
+    restaurants = response.get_json()['restaurants']
+    assert [(r['name'], r['distance_km']) for r in restaurants] == [
+        ('here', 0.0), ('near', 0.11), ('far', 1.11)]
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False,
+        filt=_near_filter(NEAR_LAT, NEAR_LON, 5))
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', return_value=[], autospec=True)
+def test_nearby_default_radius(read, connect):
+    response = _authed_client().get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': NEAR_LAT, 'lon': NEAR_LON})
+    assert response.status_code == 200
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False,
+        filt=_near_filter(NEAR_LAT, NEAR_LON, 2))
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', return_value=[], autospec=True)
+def test_nearby_empty(read, connect):
+    response = _authed_client().get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': 0, 'lon': 0})
+    assert response.status_code == 200
+    assert response.get_json() == {'restaurants': []}
+
+
+@pytest.mark.parametrize('params', [
+    {},
+    {'lat': 'abc', 'lon': '-74'},
+    {'lat': '91', 'lon': '0'},
+    {'lat': '0', 'lon': '181'},
+    {'lat': 'nan', 'lon': '0'},
+])
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', autospec=True)
+def test_nearby_bad_lat_lon(read, connect, params):
+    response = _authed_client().get(
+        rest.RESTAURANTS_NEARBY_EP, query_string=params)
+    assert response.status_code == 400
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize('radius_km', ['0', '-1', '51', 'abc', 'nan', 'inf'])
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', autospec=True)
+def test_nearby_bad_radius(read, connect, radius_km):
+    response = _authed_client().get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': NEAR_LAT, 'lon': NEAR_LON, 'radius_km': radius_km})
+    assert response.status_code == 400
+    assert response.get_json() == {
+        rest.MESSAGE: 'radius_km must be greater than 0 and at most 50'}
+    read.assert_not_called()
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+def test_nearby_login_required(connect):
+    response = app.test_client().get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': NEAR_LAT, 'lon': NEAR_LON})
+    assert response.status_code == 401
+    connect.assert_not_called()
+
+
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.read', return_value=[], autospec=True)
+@patch('data.db_connect.read_one', autospec=True)
+def test_nearby_not_routed_as_resid(read_one, read, connect):
+    client = _authed_client()
+    response = client.get(rest.RESTAURANTS_NEARBY_EP, query_string={
+        'lat': NEAR_LAT, 'lon': NEAR_LON})
+    assert response.status_code == 200
+    assert response.get_json() == {'restaurants': []}
+    # Missing params get the nearby 400, not the single-restaurant 404.
+    assert client.get(rest.RESTAURANTS_NEARBY_EP).status_code == 400
+    read_one.assert_not_called()
+    adapter = app.url_map.bind('localhost')
+    endpoint, _ = adapter.match(rest.RESTAURANTS_NEARBY_EP)
+    assert endpoint == 'restaurants_restaurants_nearby'

@@ -2,6 +2,7 @@
 The logged-in user's personal restaurant list.
 """
 from http import HTTPStatus
+from math import isfinite
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -12,14 +13,22 @@ import data.db_connect as dbc
 from security.jwt_auth import login_required
 from places.load import geo_point
 from server.neighborhoods import (
-    LAT_LON_BODY_NUMERIC_ERROR, find_neighborhood, lat_lon_error)
+    LAT_LON_BODY_NUMERIC_ERROR, find_neighborhood, lat_lon_error,
+    parse_lat_lon)
+from server.states import haversine_km
 
 ns = Namespace('restaurants', path='/')
 
 MESSAGE = 'Message'
 RESTAURANTS_EP = '/restaurants'
 RESTAURANT_EP = '/restaurants/<string:resid>'
+RESTAURANTS_NEARBY_EP = '/restaurants/nearby'
 RESTAURANTS_COLLECT = 'restaurants'
+
+EARTH_RADIUS_KM = 6371
+DEFAULT_RADIUS_KM = 2
+MAX_RADIUS_KM = 50
+RADIUS_ERROR = f'radius_km must be greater than 0 and at most {MAX_RADIUS_KM}'
 
 
 def _parse_restaurant(data):
@@ -101,6 +110,52 @@ class Restaurants(Resource):
         result = dbc.create(RESTAURANTS_COLLECT, restaurant)
         restaurant['_id'] = str(result.inserted_id)
         return {'restaurant': restaurant}, HTTPStatus.CREATED
+
+
+def _parse_radius_km():
+    """
+    Read the optional radius_km query parameter.
+    Returns (radius_km, None) on success, or (None, error_message)
+    on failure.
+    """
+    try:
+        radius_km = float(request.args.get('radius_km', DEFAULT_RADIUS_KM))
+    except (TypeError, ValueError):
+        return None, RADIUS_ERROR
+    if not isfinite(radius_km) or not 0 < radius_km <= MAX_RADIUS_KM:
+        return None, RADIUS_ERROR
+    return radius_km, None
+
+
+@ns.route(RESTAURANTS_NEARBY_EP)
+class RestaurantsNearby(Resource):
+    method_decorators = [login_required]
+
+    def get(self):
+        """
+        Return the logged-in user's saved restaurants within radius_km
+        (default 2) of lat, lon, closest first.
+        """
+        coords, error = parse_lat_lon()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        radius_km, error = _parse_radius_km()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        lat, lon = coords
+
+        dbc.connect_db()
+        restaurants = dbc.read(RESTAURANTS_COLLECT, no_id=False, filt={
+            'user': g.current_user,
+            'location': {'$geoWithin': {'$centerSphere': [
+                [lon, lat], radius_km / EARTH_RADIUS_KM]}},
+        })
+        for restaurant in restaurants:
+            res_lon, res_lat = restaurant['location']['coordinates']
+            restaurant['distance_km'] = round(
+                haversine_km(lat, lon, res_lat, res_lon), 2)
+        restaurants.sort(key=lambda r: r['distance_km'])
+        return {'restaurants': restaurants}
 
 
 @ns.route(RESTAURANT_EP)
