@@ -39,7 +39,6 @@ class States(Resource):
         """
         Return all states loaded by states/load.py.
         """
-        dbc.connect_db()
         return {STATES_RESP: dbc.read(STATES_COLLECT)}
 
 
@@ -47,7 +46,6 @@ class States(Resource):
 class State(Resource):
     def get(self, abbrev):
         """Return one state by its abbreviation."""
-        dbc.connect_db()
         state = dbc.read_one(
             STATES_COLLECT,
             {'Abbrev': abbrev.upper()},
@@ -70,7 +68,6 @@ class NearestState(Resource):
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
         lat, lon = coords
 
-        dbc.connect_db()
         states = dbc.read(STATES_COLLECT)
 
         if not states:

@@ -60,7 +60,6 @@ def find_neighborhood(lat, lon):
     Return the neighborhood whose boundary contains lat, lon, without
     _id and boundary, or None if no neighborhood contains it.
     """
-    dbc.connect_db()
     neighborhood = dbc.read_one(PLACES_COLLECT, {
         'type': NEIGHBORHOOD,
         'boundary': {'$geoIntersects': {'$geometry': geo_point(lat, lon)}},

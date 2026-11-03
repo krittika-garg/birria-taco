@@ -188,3 +188,54 @@ def test_read_filters_by_owner(test_collection):
     assert isinstance(saved[0]['_id'], str)
     assert len(dbc.read(collection, db=database)) == 2
     assert dbc.read(collection, db=database, filt={'user': 'nobody'}) == []
+
+
+DECORATED_HELPERS = [
+    'create', 'read', 'read_one', 'update', 'upsert', 'delete',
+    'create_index', 'read_dict', 'fetch_all_as_dict',
+]
+
+
+def test_needs_connection_connects_before_call():
+    order = []
+
+    @dbc.needs_connection
+    def op():
+        order.append('op')
+
+    with patch('data.db_connect.connect_db',
+               side_effect=lambda: order.append('connect')) as connect:
+        op()
+    connect.assert_called_once_with()
+    assert order == ['connect', 'op']
+
+
+@patch('data.db_connect.connect_db')
+def test_needs_connection_passes_args_and_return(connect):
+    inner = MagicMock(return_value='result')
+    wrapped = dbc.needs_connection(inner)
+    assert wrapped(1, 'two', key='value', db='other') == 'result'
+    inner.assert_called_once_with(1, 'two', key='value', db='other')
+
+
+def test_needs_connection_preserves_metadata():
+    def sample():
+        """Sample docstring."""
+
+    wrapped = dbc.needs_connection(sample)
+    assert wrapped.__name__ == 'sample'
+    assert wrapped.__doc__ == 'Sample docstring.'
+    assert wrapped.__wrapped__ is sample
+
+
+@patch('data.db_connect.pm.MongoClient')
+def test_helpers_reuse_one_connection(mock_client, fresh_connection):
+    dbc.read('restaurants')
+    dbc.read('restaurants')
+    mock_client.assert_called_once_with()
+
+
+@pytest.mark.parametrize('name', DECORATED_HELPERS)
+def test_db_helpers_are_decorated(name):
+    assert hasattr(getattr(dbc, name), '__wrapped__'), (
+        f'{name} must use @needs_connection')
