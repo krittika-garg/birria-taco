@@ -89,7 +89,6 @@ class Restaurants(Resource):
     def get(self):
         """Return the logged-in user's saved restaurants."""
         username = g.current_user
-        dbc.connect_db()
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
         # Best-rated first; unrated entries last.
@@ -106,7 +105,6 @@ class Restaurants(Resource):
 
         restaurant['user'] = username
         _tag_neighborhood(restaurant)
-        dbc.connect_db()
         result = dbc.create(RESTAURANTS_COLLECT, restaurant)
         restaurant['_id'] = str(result.inserted_id)
         return {'restaurant': restaurant}, HTTPStatus.CREATED
@@ -144,7 +142,6 @@ class RestaurantsNearby(Resource):
             return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
         lat, lon = coords
 
-        dbc.connect_db()
         restaurants = dbc.read(RESTAURANTS_COLLECT, no_id=False, filt={
             'user': g.current_user,
             'location': {'$geoWithin': {'$centerSphere': [
@@ -170,7 +167,6 @@ class Restaurant(Resource):
         except (InvalidId, TypeError):
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
 
-        dbc.connect_db()
         restaurant = dbc.read_one(
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
         if restaurant is None:
@@ -192,7 +188,6 @@ class Restaurant(Resource):
         # $set only touches given fields; clear any old location.
         restaurant.setdefault('location', None)
         _tag_neighborhood(restaurant)
-        dbc.connect_db()
         result = dbc.update(
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username},
             restaurant)
@@ -211,7 +206,6 @@ class Restaurant(Resource):
         except (InvalidId, TypeError):
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
 
-        dbc.connect_db()
         deleted = dbc.delete(
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
         if not deleted:
