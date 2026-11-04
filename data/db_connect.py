@@ -87,6 +87,18 @@ def delete(collection: str, filt: dict, db=SE_DB):
 
 
 @needs_connection
+def pop_one(collection, filt, db=SE_DB):
+    """
+    Atomically find and delete the first doc matching filt.
+    Return the deleted doc, or None if nothing matched.
+    """
+    doc = client[db][collection].find_one_and_delete(filt)
+    if doc:
+        convert_mongo_id(doc)
+    return doc
+
+
+@needs_connection
 def update(collection, filters, update_dict, db=SE_DB):
     return client[db][collection].update_one(filters, {'$set': update_dict})
 

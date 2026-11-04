@@ -136,6 +136,15 @@ def test_update_raw_passes_operators_through(fake_collection):
         {"_id": "bob"}, update_doc, upsert=True)
 
 
+def test_pop_one_returns_deleted_doc_or_none(fake_collection):
+    oid = ObjectId()
+    fake_collection.find_one_and_delete.return_value = {dbc.MONGO_ID: oid}
+    assert dbc.pop_one("tokens", {"h": "x"}) == {dbc.MONGO_ID: str(oid)}
+    fake_collection.find_one_and_delete.assert_called_once_with({"h": "x"})
+    fake_collection.find_one_and_delete.return_value = None
+    assert dbc.pop_one("tokens", {"h": "y"}) is None
+
+
 def test_delete_returns_count(fake_collection):
     fake_collection.delete_one.return_value.deleted_count = 1
     assert dbc.delete("restaurants", {"name": "x"}) == 1
@@ -198,8 +207,8 @@ def test_read_filters_by_owner(test_collection):
 
 
 DECORATED_HELPERS = [
-    'create', 'read', 'read_one', 'update', 'upsert', 'delete',
-    'create_index', 'read_dict', 'fetch_all_as_dict',
+    'create', 'read', 'read_one', 'update', 'update_raw', 'upsert',
+    'delete', 'pop_one', 'create_index', 'read_dict', 'fetch_all_as_dict',
 ]
 
 
