@@ -36,7 +36,6 @@ def main():
     states = load_states(file_path)
 
     # Print the loaded states
-    dbc.connect_db()
     for state in states:
         dbc.upsert('states', {'Abbrev': state['Abbrev']}, state)
     print(f'Imported {len(states)} state records.')

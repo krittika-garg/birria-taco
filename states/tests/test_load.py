@@ -29,11 +29,9 @@ def test_load_states_bad_path():
 
 
 @patch('data.db_connect.upsert')
-@patch('data.db_connect.connect_db')
-def test_main(mock_connect, mock_upsert):
+def test_main(mock_upsert):
     with patch('sys.argv', ['load.py', CSV_PATH]):
         ld.main()
-    mock_connect.assert_called_once()
     assert mock_upsert.call_count == NUM_STATES
     collection, filt, doc = mock_upsert.call_args[0]
     assert collection == 'states'
