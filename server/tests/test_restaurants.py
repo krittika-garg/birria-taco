@@ -69,7 +69,7 @@ def test_edit_delete_success(delete, update, connect):
     assert response.get_json()['restaurant'] == {
         '_id': A_RESID, 'user': 'bob', 'name': 'Tacos', 'city': 'NY',
         'cuisine': '', 'notes': '', 'rating': None, 'location': None,
-        'neighborhood': None}
+        'neighborhood': None, 'status': 'visited'}
 
     assert client.delete(url).status_code == 200
 
@@ -107,7 +107,7 @@ def test_personal_list(create, read, connect):
         assert response.get_json()['restaurant'] == {
             '_id': '123', 'user': username, 'name': 'Tacos', 'city': 'NY',
             'cuisine': '', 'notes': '', 'rating': None,
-            'neighborhood': None}
+            'neighborhood': None, 'status': 'visited'}
         response = client.get(rest.RESTAURANTS_EP + '?user=someone-else')
         assert response.get_json() == {'restaurants': []}
         read.assert_called_with(rest.RESTAURANTS_COLLECT, no_id=False,
@@ -320,12 +320,112 @@ def _authed_client(username='bob'):
     return client
 
 
+@pytest.mark.parametrize('params,expected', [
+    ({'q': ' RAMEN '}, ['Ramen House', 'Ramen Bar']),
+    ({'cuisine': ' JAPANESE '}, ['Sushi', 'Ramen House', 'Ramen Bar']),
+    ({'min_rating': '8'}, ['Sushi', 'Ramen House']),
+    ({'q': 'ramen', 'cuisine': 'japanese', 'min_rating': '8'},
+     ['Ramen House']),
+    ({'min_rating': '0'}, ['Sushi', 'Ramen House', 'Tacos']),
+    ({'min_rating': '10'}, ['Sushi']),
+    ({'q': '.*'}, []),
+    ({'q': '  ', 'cuisine': ' '},
+     ['Sushi', 'Ramen House', 'Tacos', 'Ramen Bar']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_list_filters(read, params, expected):
+    read.return_value = [
+        {'name': 'Ramen Bar', 'cuisine': 'Japanese', 'rating': None},
+        {'name': 'Tacos', 'cuisine': 'Mexican', 'rating': 0},
+        {'name': 'Ramen House', 'cuisine': 'Japanese', 'rating': 8},
+        {'name': 'Sushi', 'cuisine': 'Japanese', 'rating': 10},
+    ]
+    response = _authed_client().get(
+        rest.RESTAURANTS_EP, query_string={**params, 'user': 'alice'})
+    assert response.status_code == 200
+    assert [r['name'] for r in response.get_json()['restaurants']] == expected
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})
+
+
+@pytest.mark.parametrize('rating', ['', 'abc', '-1', '11', 'nan', 'inf'])
+@patch('data.db_connect.read', autospec=True)
+def test_list_invalid_min_rating(read, rating):
+    response = _authed_client().get(
+        rest.RESTAURANTS_EP, query_string={'min_rating': rating})
+    assert response.status_code == 400
+    read.assert_not_called()
+
+
 def _near_filter(lat, lon, radius_km, username='bob'):
     return {
         'user': username,
         'location': {'$geoWithin': {'$centerSphere': [
             [lon, lat], radius_km / 6371]}},
     }
+
+
+@patch('data.db_connect.create', autospec=True)
+@patch('data.db_connect.update', autospec=True)
+def test_want_to_try_then_visit(update, create):
+    create.return_value.inserted_id = A_RESID
+    update.return_value.matched_count = 1
+    client = _authed_client()
+    payload = {'name': 'Tacos', 'city': 'NY', 'status': 'want_to_try'}
+    response = client.post(rest.RESTAURANTS_EP, json=payload)
+    assert response.status_code == 201
+    assert response.json['restaurant']['status'] == 'want_to_try'
+    assert response.json['restaurant']['rating'] is None
+    payload.update(status='visited', rating=9)
+    response = client.put(f'{rest.RESTAURANTS_EP}/{A_RESID}', json=payload)
+    assert response.status_code == 200
+    assert response.json['restaurant']['status'] == 'visited'
+    assert response.json['restaurant']['rating'] == 9
+    assert update.call_args.args[1]['user'] == 'bob'
+
+
+@pytest.mark.parametrize('payload', [
+    {'status': 'unknown'}, {'status': None}, {'status': []},
+    {'status': 'want_to_try', 'rating': 8},
+])
+@patch('data.db_connect.create', autospec=True)
+@patch('data.db_connect.update', autospec=True)
+def test_invalid_status_payload(update, create, payload):
+    client = _authed_client()
+    body = {'name': 'Tacos', 'city': 'NY', **payload}
+    assert client.post(rest.RESTAURANTS_EP, json=body).status_code == 400
+    assert client.put(f'{rest.RESTAURANTS_EP}/{A_RESID}',
+                      json=body).status_code == 400
+    create.assert_not_called()
+    update.assert_not_called()
+
+
+@pytest.mark.parametrize('params,expected', [
+    ({'status': 'visited'}, ['Old favorite']),
+    ({'status': 'want_to_try'}, ['New place']),
+    ({'status': 'want_to_try', 'min_rating': '0'}, []),
+    ({'status': 'want_to_try', 'q': 'new', 'cuisine': 'Mexican'},
+     ['New place']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_status_filter_with_legacy_entries(read, params, expected):
+    read.return_value = [
+        {'name': 'Old favorite', 'rating': 8},
+        {'name': 'New place', 'status': 'want_to_try',
+         'rating': None, 'cuisine': 'Mexican'},
+    ]
+    response = _authed_client().get(rest.RESTAURANTS_EP, query_string=params)
+    assert response.status_code == 200
+    assert [r['name'] for r in response.json['restaurants']] == expected
+    assert all('status' in r for r in response.json['restaurants'])
+    assert read.call_args.kwargs['filt'] == {'user': 'bob'}
+
+
+@patch('data.db_connect.read', autospec=True)
+def test_invalid_status_filter(read):
+    response = _authed_client().get('/restaurants?status=unknown')
+    assert response.status_code == 400
+    read.assert_not_called()
 
 
 def _saved(name, lat, lon):
