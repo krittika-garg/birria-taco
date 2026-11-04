@@ -58,8 +58,9 @@ the server with `./local.sh`. Use a randomly generated key of at least 32 bytes.
 For deployment, configure a persistent key in the hosting environment.
 
 Log in through `POST /login` with JSON `{"username": "...", "password": "..."}`.
-The response contains `access_token`, `token_type` (`Bearer`), and
-`expires_in` (900 seconds). Include the token on all restaurant requests:
+The response contains `access_token`, `refresh_token`, `token_type` (`Bearer`),
+and `expires_in` (900 seconds). Include the access token on all restaurant
+requests:
 
 ~~~text
 Authorization: Bearer YOUR_ACCESS_TOKEN
@@ -69,9 +70,17 @@ Missing, invalid, or expired tokens return `401`. Session cookies alone no
 longer authorize restaurant requests. Missing JWT configuration returns `503`
 when issuing a token or validating a supplied Bearer token.
 
-Tokens expire after 15 minutes. Refresh tokens are not implemented yet.
-On logout, the frontend must discard its token. `POST /logout` clears legacy
-session data but does not revoke an issued JWT.
+Access tokens expire after 15 minutes. To stay logged in, send
+`POST /refresh` with JSON `{"refresh_token": "..."}` when a request returns
+`401`, then retry that request. The response has the same fields as `/login`.
+Refresh tokens last 7 days and work once: every refresh returns a new one, so
+always store the latest, and an invalid, expired, or reused token returns `401`,
+meaning the user must log in again. A frontend should only run one refresh at a
+time, because a second request with the same token will fail.
+
+On logout, send `POST /logout` with JSON `{"refresh_token": "..."}` to revoke
+the refresh token, and discard both tokens. An access token that was already
+issued keeps working until it expires.
 
 - `POST /restaurants` saves an entry to the logged-in user's list and returns
   `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and

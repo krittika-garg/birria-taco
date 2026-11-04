@@ -1,4 +1,4 @@
-"""Generate refresh tokens and hash them for database storage."""
+"""Issue, redeem and revoke refresh tokens; only hashes are stored."""
 
 import hashlib
 import secrets
@@ -46,3 +46,21 @@ def issue_refresh_token(username):
         ),
     })
     return token
+
+
+def redeem_refresh_token(token):
+    """Consume a live token and return its username, or None if invalid."""
+    token_hash = hash_refresh_token(token)
+    # Atomic, so a token works once. Expiry is checked here because
+    # Mongo's TTL cleanup only runs periodically.
+    doc = _collection().find_one_and_delete({
+        'token_hash': token_hash,
+        'expires_at': {'$gt': datetime.now(timezone.utc)},
+    })
+    return doc['username'] if doc else None
+
+
+def revoke_refresh_token(token):
+    """Delete a token if it exists."""
+    token_hash = hash_refresh_token(token)
+    _collection().delete_one({'token_hash': token_hash})
