@@ -24,6 +24,8 @@ RESTAURANTS_EP = '/restaurants'
 RESTAURANT_EP = '/restaurants/<string:resid>'
 RESTAURANTS_NEARBY_EP = '/restaurants/nearby'
 RESTAURANTS_COLLECT = 'restaurants'
+STATUSES = ('visited', 'want_to_try')
+STATUS_ERROR = 'status must be visited or want_to_try'
 
 EARTH_RADIUS_KM = 6371
 DEFAULT_RADIUS_KM = 2
@@ -48,11 +50,17 @@ def _parse_restaurant(data):
         if field in ('name', 'city') and not value:
             return None, f'{field} required'
         restaurant[field] = value
+    status = data.get('status', 'visited')
+    if status not in STATUSES:
+        return None, STATUS_ERROR
+    restaurant['status'] = status
     rating = data.get('rating')
     if rating is not None and (
             isinstance(rating, bool) or not isinstance(rating, (int, float))
             or not 0 <= rating <= 10):
         return None, 'rating must be a number from 0 to 10'
+    if status == 'want_to_try' and rating is not None:
+        return None, 'want_to_try restaurants cannot have a rating'
     restaurant['rating'] = rating
 
     lat, lon = data.get('lat'), data.get('lon')
@@ -90,11 +98,15 @@ class Restaurants(Resource):
         'q': 'Case-insensitive text contained in the restaurant name',
         'cuisine': 'Case-insensitive exact cuisine',
         'min_rating': 'Minimum rating, from 0 to 10 (inclusive)',
+        'status': 'visited or want_to_try; omitted returns both',
     })
     def get(self):
         """Return the logged-in user's saved restaurants."""
         query = request.args.get('q', '').strip().casefold()
         cuisine = request.args.get('cuisine', '').strip().casefold()
+        status = request.args.get('status')
+        if status is not None and status not in STATUSES:
+            return {MESSAGE: STATUS_ERROR}, HTTPStatus.BAD_REQUEST
         min_rating = None
         if 'min_rating' in request.args:
             error = {MESSAGE: 'min_rating must be a number from 0 to 10'}
@@ -107,8 +119,11 @@ class Restaurants(Resource):
         username = g.current_user
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+        for restaurant in restaurants:
+            restaurant.setdefault('status', 'visited')
         restaurants = [r for r in restaurants
                        if query in r.get('name', '').casefold()
+                       and (status is None or r['status'] == status)
                        and (not cuisine or
                             cuisine == r.get('cuisine', '').casefold())
                        and (min_rating is None or
@@ -172,6 +187,7 @@ class RestaurantsNearby(Resource):
         })
         for restaurant in restaurants:
             res_lon, res_lat = restaurant['location']['coordinates']
+            restaurant.setdefault('status', 'visited')
             restaurant['distance_km'] = round(
                 haversine_km(lat, lon, res_lat, res_lon), 2)
         restaurants.sort(key=lambda r: r['distance_km'])
@@ -194,6 +210,7 @@ class Restaurant(Resource):
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
         if restaurant is None:
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        restaurant.setdefault('status', 'visited')
         return {'restaurant': restaurant}
 
     def put(self, resid):

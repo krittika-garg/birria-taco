@@ -96,12 +96,21 @@ issued keeps working until it expires.
   the full cuisine (both case-insensitive), and `min_rating` accepts 0–10,
   excluding unrated entries. Blank text filters are ignored; invalid minimum
   ratings return `400`. Example: `/restaurants?q=ramen&cuisine=Japanese&min_rating=8`.
+  Filter by `status=want_to_try` or `status=visited`; omit it to return both.
 - `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
   logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
   returns `200`.
+
+To save a place for later, include `"status": "want_to_try"` in the POST
+body, with no rating. After visiting, PUT the restaurant's name, city and
+other desired fields with `"status": "visited"` and an optional rating.
+POST and PUT default omitted status to `visited`; existing records without
+status are also treated as visited. Unknown statuses and ratings on
+want-to-try entries return `400`. Want-to-try entries remain unrated and
+are excluded by `min_rating`, including `min_rating=0`.
 
 `GET`, `PUT`, and `DELETE` on `/restaurants/<id>` return `404` for an `id`
 that doesn't exist or belongs to another user. Ownership comes from the verified JWT; a supplied `user`
