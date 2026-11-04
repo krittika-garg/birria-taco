@@ -24,11 +24,12 @@ def hash_refresh_token(token):
 COLLECTION = 'refresh_tokens'
 
 
-def _collection():
-    collection = dbc.connect_db()[dbc.SE_DB][COLLECTION]
-    collection.create_index('token_hash', unique=True)
-    collection.create_index('expires_at', expireAfterSeconds=0)
-    return collection
+DB = dbc.SE_DB  # read at call time so tests can point it elsewhere
+
+
+def _ensure_indexes():
+    dbc.create_index(COLLECTION, 'token_hash', unique=True, db=DB)
+    dbc.create_index(COLLECTION, 'expires_at', expireAfterSeconds=0, db=DB)
 
 
 def issue_refresh_token(username):
@@ -37,14 +38,15 @@ def issue_refresh_token(username):
         raise ValueError('username must be a nonempty string')
 
     token = generate_refresh_token()
-    _collection().insert_one({
+    _ensure_indexes()
+    dbc.create(COLLECTION, {
         'token_hash': hash_refresh_token(token),
         'username': username,
         'expires_at': (
             datetime.now(timezone.utc)
             + timedelta(days=REFRESH_TOKEN_DAYS)
         ),
-    })
+    }, db=DB)
     return token
 
 
@@ -53,14 +55,16 @@ def redeem_refresh_token(token):
     token_hash = hash_refresh_token(token)
     # Atomic, so a token works once. Expiry is checked here because
     # Mongo's TTL cleanup only runs periodically.
-    doc = _collection().find_one_and_delete({
+    _ensure_indexes()
+    doc = dbc.pop_one(COLLECTION, {
         'token_hash': token_hash,
         'expires_at': {'$gt': datetime.now(timezone.utc)},
-    })
+    }, db=DB)
     return doc['username'] if doc else None
 
 
 def revoke_refresh_token(token):
     """Delete a token if it exists."""
     token_hash = hash_refresh_token(token)
-    _collection().delete_one({'token_hash': token_hash})
+    _ensure_indexes()
+    dbc.delete(COLLECTION, {'token_hash': token_hash}, db=DB)

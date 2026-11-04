@@ -43,27 +43,25 @@ def test_hash_rejects_invalid_input(token):
         hash_refresh_token(token)
 
 
-@patch('security.refresh_tokens.dbc.connect_db')
-def test_refresh_collection_indexes(connect):
-    collection = connect.return_value[dbc_name()][refresh.COLLECTION]
-
-    assert refresh._collection() is collection
-    collection.create_index.assert_any_call('token_hash', unique=True)
-    collection.create_index.assert_any_call(
-        'expires_at', expireAfterSeconds=0)
-
-
-def dbc_name():
-    return refresh.dbc.SE_DB
+@patch('security.refresh_tokens.dbc.create_index')
+def test_refresh_collection_indexes(create_index):
+    refresh._ensure_indexes()
+    create_index.assert_any_call(
+        refresh.COLLECTION, 'token_hash', unique=True, db=refresh.DB)
+    create_index.assert_any_call(
+        refresh.COLLECTION, 'expires_at', expireAfterSeconds=0,
+        db=refresh.DB)
 
 
-@patch('security.refresh_tokens._collection')
-def test_issue_refresh_token(collection):
+@patch('security.refresh_tokens.dbc.create_index')
+@patch('security.refresh_tokens.dbc.create')
+def test_issue_refresh_token(create, create_index):
     before = datetime.now(timezone.utc)
     token = refresh.issue_refresh_token('bob')
     after = datetime.now(timezone.utc)
 
-    stored = collection.return_value.insert_one.call_args.args[0]
+    collection, stored = create.call_args.args
+    assert collection == refresh.COLLECTION
     assert stored['username'] == 'bob'
     assert stored['token_hash'] == refresh.hash_refresh_token(token)
     assert stored['token_hash'] != token
@@ -72,26 +70,26 @@ def test_issue_refresh_token(collection):
 
 
 @pytest.mark.parametrize('username', ['', None, 42, True])
-@patch('security.refresh_tokens._collection')
-def test_issue_rejects_invalid_username(collection, username):
+@patch('security.refresh_tokens.dbc')
+def test_issue_rejects_invalid_username(dbc, username):
     with pytest.raises(ValueError, match='username'):
         refresh.issue_refresh_token(username)
-    collection.assert_not_called()
+    assert not dbc.mock_calls
 
 
 @pytest.mark.parametrize('token', ['', None, 42, {'$ne': None}])
-@patch('security.refresh_tokens._collection')
-def test_redeem_and_revoke_reject_invalid_input(collection, token):
+@patch('security.refresh_tokens.dbc')
+def test_redeem_and_revoke_reject_invalid_input(dbc, token):
     with pytest.raises(ValueError):
         refresh.redeem_refresh_token(token)
     with pytest.raises(ValueError):
         refresh.revoke_refresh_token(token)
-    collection.assert_not_called()
+    assert not dbc.mock_calls
 
 
 @pytest.fixture
-def live_tokens():
-    """Point the module at a throwaway collection on a real local Mongo."""
+def live_tokens(monkeypatch):
+    """Point the module at a throwaway database on a real local Mongo."""
     client = pm.MongoClient('mongodb://localhost:27017/',
                             serverSelectionTimeoutMS=500)
     try:
@@ -100,11 +98,10 @@ def live_tokens():
         client.close()
         pytest.skip('MongoDB is not reachable')
     database = f'test_{uuid4().hex}'
-    collection = client[database][refresh.COLLECTION]
+    monkeypatch.setattr(refresh.dbc, 'client', client)
+    monkeypatch.setattr(refresh, 'DB', database)
     try:
-        with patch('security.refresh_tokens._collection',
-                   return_value=collection):
-            yield collection
+        yield client[database][refresh.COLLECTION]
     finally:
         client.drop_database(database)
         client.close()
