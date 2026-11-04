@@ -12,6 +12,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from flask import g, request
 from flask_restx import Namespace, Resource
+import pymongo.errors as pme
 
 import data.db_connect as dbc
 from security.jwt_auth import login_required
@@ -32,6 +33,7 @@ ANSWERS = (BETTER, WORSE, SAME)
 SESSION_MINUTES = 15
 
 SESSION_NOT_FOUND = 'Ranking session not found or expired'
+LIST_CHANGED = 'Your list changed while ranking; start again'
 
 
 def bucket_bounds(ordered, bucket):
@@ -62,9 +64,10 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _load_ordered(username):
+def _load_ranking(username):
+    """Return (ordered, version); a user with no list is at version 0."""
     ranking = dbc.read_one(RANKINGS_COLLECT, {'_id': username})
-    return ranking['ordered'] if ranking else []
+    return (ranking['ordered'], ranking['version']) if ranking else ([], 0)
 
 
 def _comparison(session_id, ordered, lo, hi):
@@ -77,18 +80,25 @@ def _comparison(session_id, ordered, lo, hi):
     }
 
 
-def _save(username, resid, bucket, position, pairs):
+def _save(username, resid, bucket, position, pairs, version):
     """
     Insert the place into the user's list at position and record every
-    answered pair as a comparison.
+    answered pair as a comparison. The write only matches while the list
+    is still at version, so a save from another tab can't shift position
+    under us. Returns None if the list changed.
     """
     now = _now()
     entry = {'restaurant_id': resid, 'bucket': bucket, 'ranked_at': now}
-    dbc.update_raw(
-        RANKINGS_COLLECT, {'_id': username},
-        {'$push': {'ordered': {'$each': [entry], '$position': position}},
-         '$inc': {'version': 1}},
-        upsert=True)
+    try:
+        # If the list exists at another version, the upsert tries to
+        # insert a second doc with the same _id and Mongo refuses.
+        dbc.update_raw(
+            RANKINGS_COLLECT, {'_id': username, 'version': version},
+            {'$push': {'ordered': {'$each': [entry], '$position': position}},
+             '$inc': {'version': 1}},
+            upsert=True)
+    except pme.DuplicateKeyError:
+        return None
     for winner, loser in pairs:
         dbc.create(COMPARISONS_COLLECT, {
             'user': username, 'winner_id': winner, 'loser_id': loser,
@@ -121,21 +131,23 @@ class RankSessions(Resource):
             RESTAURANTS_COLLECT, {'_id': ObjectId(resid), 'user': username})
         if restaurant is None:
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
-        ordered = _load_ordered(username)
+        ordered, version = _load_ranking(username)
         if any(entry['restaurant_id'] == resid for entry in ordered):
             return {MESSAGE: 'Restaurant already ranked'}, \
                 HTTPStatus.CONFLICT
 
         lo, hi = bucket_bounds(ordered, bucket)
         if lo == hi:
-            return _save(username, resid, bucket, lo, []), \
-                HTTPStatus.CREATED
+            saved = _save(username, resid, bucket, lo, [], version)
+            if saved is None:
+                return {MESSAGE: LIST_CHANGED}, HTTPStatus.CONFLICT
+            return saved, HTTPStatus.CREATED
 
         # ponytail: sessions live in Mongo, not Redis; expired ones are
         # rejected but not removed. Add a TTL index on expires_at.
         result = dbc.create(RANK_SESSIONS_COLLECT, {
             'user': username, 'restaurant_id': resid, 'bucket': bucket,
-            'lo': lo, 'hi': hi, 'pairs': [],
+            'lo': lo, 'hi': hi, 'pairs': [], 'version': version,
             'expires_at': _now() + timedelta(minutes=SESSION_MINUTES)})
         session_id = str(result.inserted_id)
         return _comparison(session_id, ordered, lo, hi), HTTPStatus.CREATED
@@ -169,7 +181,11 @@ class RankAnswer(Resource):
                 tzinfo=timezone.utc) < _now():
             return {MESSAGE: SESSION_NOT_FOUND}, HTTPStatus.NOT_FOUND
 
-        ordered = _load_ordered(username)
+        ordered, version = _load_ranking(username)
+        if version != session['version']:
+            # lo, hi and mid point into the list as it was at the start.
+            dbc.delete(RANK_SESSIONS_COLLECT, {'_id': obj_id})
+            return {MESSAGE: LIST_CHANGED}, HTTPStatus.CONFLICT
         lo, hi, pairs = session['lo'], session['hi'], session['pairs']
         resid = session['restaurant_id']
         compared = ordered[(lo + hi) // 2]['restaurant_id']
@@ -181,7 +197,11 @@ class RankAnswer(Resource):
         lo, hi = narrow(lo, hi, answer)
         if lo == hi:
             dbc.delete(RANK_SESSIONS_COLLECT, {'_id': obj_id})
-            return _save(username, resid, session['bucket'], lo, pairs)
+            saved = _save(username, resid, session['bucket'], lo, pairs,
+                          version)
+            if saved is None:
+                return {MESSAGE: LIST_CHANGED}, HTTPStatus.CONFLICT
+            return saved
         dbc.update(RANK_SESSIONS_COLLECT, {'_id': obj_id},
                    {'lo': lo, 'hi': hi, 'pairs': pairs})
         return _comparison(session_id, ordered, lo, hi)

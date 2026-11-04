@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pymongo.errors as pme
 import pytest
 from bson import ObjectId
 
@@ -85,11 +86,12 @@ def set_ranking(db, entries, user='bob'):
         for resid, bucket in entries]}]
 
 
-def pushed(db):
+def pushed(db, version=1):
     """Return (entry, position) from the single $push into rankings."""
     dbc.update_raw.assert_called_once()
     collection, filt, update_doc = dbc.update_raw.call_args.args
-    assert (collection, filt) == (rk.RANKINGS_COLLECT, {'_id': 'bob'})
+    assert (collection, filt) == (
+        rk.RANKINGS_COLLECT, {'_id': 'bob', 'version': version})
     push = update_doc['$push']['ordered']
     return push['$each'][0], push['$position']
 
@@ -245,3 +247,40 @@ def test_answer_expired_session(client, db):
     url = rk.RANK_SESSIONS_EP + f'/{session_id}/answer'
     assert client.post(url, json={'answer': 'better'}).status_code == 404
     dbc.update_raw.assert_not_called()
+
+
+def test_first_place_saves_at_version_zero(client, db):
+    tacos = add_restaurant(db, 'Tacos')
+    response = client.post(rk.RANK_SESSIONS_EP, json={
+        'restaurant_id': tacos, 'bucket': 'liked'})
+    assert response.status_code == 201
+    pushed(db, version=0)
+
+
+def test_answer_after_another_tab_saved(client, db):
+    # Two tabs rank against version 1; the other tab saves first.
+    session_id = start_session(client, db)
+    db[rk.RANKINGS_COLLECT][0]['version'] = 2
+    url = rk.RANK_SESSIONS_EP + f'/{session_id}/answer'
+    response = client.post(url, json={'answer': 'better'})
+    assert response.status_code == 409
+    dbc.update_raw.assert_not_called()
+    assert db[rk.RANK_SESSIONS_COLLECT] == []
+
+
+def test_save_loses_race_with_another_tab(client, db):
+    # The version matched when read but changed before the write landed.
+    session_id = start_session(client, db)
+    dbc.update_raw.side_effect = pme.DuplicateKeyError('')
+    url = rk.RANK_SESSIONS_EP + f'/{session_id}/answer'
+    response = client.post(url, json={'answer': 'better'})
+    assert response.status_code == 409
+    assert rk.COMPARISONS_COLLECT not in db
+    assert db[rk.RANK_SESSIONS_COLLECT] == []
+
+
+def test_empty_bucket_save_loses_race(client, db):
+    dbc.update_raw.side_effect = pme.DuplicateKeyError('')
+    response = client.post(rk.RANK_SESSIONS_EP, json={
+        'restaurant_id': add_restaurant(db, 'Tacos'), 'bucket': 'liked'})
+    assert response.status_code == 409
