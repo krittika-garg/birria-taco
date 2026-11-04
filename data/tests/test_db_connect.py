@@ -129,6 +129,13 @@ def test_upsert_sets_fields_and_inserts_if_missing(fake_collection):
         {"Abbrev": "NY"}, {"$set": {"State": "New York"}}, upsert=True)
 
 
+def test_update_raw_passes_operators_through(fake_collection):
+    update_doc = {"$push": {"ordered": "x"}, "$inc": {"version": 1}}
+    dbc.update_raw("rankings", {"_id": "bob"}, update_doc, upsert=True)
+    fake_collection.update_one.assert_called_once_with(
+        {"_id": "bob"}, update_doc, upsert=True)
+
+
 def test_delete_returns_count(fake_collection):
     fake_collection.delete_one.return_value.deleted_count = 1
     assert dbc.delete("restaurants", {"name": "x"}) == 1
