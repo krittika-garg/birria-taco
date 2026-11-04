@@ -320,6 +320,43 @@ def _authed_client(username='bob'):
     return client
 
 
+@pytest.mark.parametrize('params,expected', [
+    ({'q': ' RAMEN '}, ['Ramen House', 'Ramen Bar']),
+    ({'cuisine': ' JAPANESE '}, ['Sushi', 'Ramen House', 'Ramen Bar']),
+    ({'min_rating': '8'}, ['Sushi', 'Ramen House']),
+    ({'q': 'ramen', 'cuisine': 'japanese', 'min_rating': '8'},
+     ['Ramen House']),
+    ({'min_rating': '0'}, ['Sushi', 'Ramen House', 'Tacos']),
+    ({'min_rating': '10'}, ['Sushi']),
+    ({'q': '.*'}, []),
+    ({'q': '  ', 'cuisine': ' '},
+     ['Sushi', 'Ramen House', 'Tacos', 'Ramen Bar']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_list_filters(read, params, expected):
+    read.return_value = [
+        {'name': 'Ramen Bar', 'cuisine': 'Japanese', 'rating': None},
+        {'name': 'Tacos', 'cuisine': 'Mexican', 'rating': 0},
+        {'name': 'Ramen House', 'cuisine': 'Japanese', 'rating': 8},
+        {'name': 'Sushi', 'cuisine': 'Japanese', 'rating': 10},
+    ]
+    response = _authed_client().get(
+        rest.RESTAURANTS_EP, query_string={**params, 'user': 'alice'})
+    assert response.status_code == 200
+    assert [r['name'] for r in response.get_json()['restaurants']] == expected
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})
+
+
+@pytest.mark.parametrize('rating', ['', 'abc', '-1', '11', 'nan', 'inf'])
+@patch('data.db_connect.read', autospec=True)
+def test_list_invalid_min_rating(read, rating):
+    response = _authed_client().get(
+        rest.RESTAURANTS_EP, query_string={'min_rating': rating})
+    assert response.status_code == 400
+    read.assert_not_called()
+
+
 def _near_filter(lat, lon, radius_km, username='bob'):
     return {
         'user': username,

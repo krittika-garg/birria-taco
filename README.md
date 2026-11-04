@@ -92,6 +92,10 @@ issued keeps working until it expires.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
   logged-in user's entries, or an empty list, sorted by `rating` (highest
   first, unrated last). Entries include a string `_id`.
+  Optional filters combine: `q` matches part of the name, `cuisine` matches
+  the full cuisine (both case-insensitive), and `min_rating` accepts 0–10,
+  excluding unrated entries. Blank text filters are ignored; invalid minimum
+  ratings return `400`. Example: `/restaurants?q=ramen&cuisine=Japanese&min_rating=8`.
 - `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
   logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using

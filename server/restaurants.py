@@ -86,11 +86,34 @@ def _tag_neighborhood(restaurant):
 class Restaurants(Resource):
     method_decorators = [login_required]
 
+    @ns.doc(params={
+        'q': 'Case-insensitive text contained in the restaurant name',
+        'cuisine': 'Case-insensitive exact cuisine',
+        'min_rating': 'Minimum rating, from 0 to 10 (inclusive)',
+    })
     def get(self):
         """Return the logged-in user's saved restaurants."""
+        query = request.args.get('q', '').strip().casefold()
+        cuisine = request.args.get('cuisine', '').strip().casefold()
+        min_rating = None
+        if 'min_rating' in request.args:
+            error = {MESSAGE: 'min_rating must be a number from 0 to 10'}
+            try:
+                min_rating = float(request.args['min_rating'])
+            except ValueError:
+                return error, HTTPStatus.BAD_REQUEST
+            if not isfinite(min_rating) or not 0 <= min_rating <= 10:
+                return error, HTTPStatus.BAD_REQUEST
         username = g.current_user
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+        restaurants = [r for r in restaurants
+                       if query in r.get('name', '').casefold()
+                       and (not cuisine or
+                            cuisine == r.get('cuisine', '').casefold())
+                       and (min_rating is None or
+                            (r.get('rating') is not None and
+                             r['rating'] >= min_rating))]
         # Best-rated first; unrated entries last.
         restaurants.sort(key=lambda r: (r.get('rating') is None,
                                         -(r.get('rating') or 0)))
