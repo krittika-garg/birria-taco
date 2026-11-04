@@ -37,7 +37,9 @@ make all_tests
 ~~~
 ./local.sh
 ~~~
-The API will be available at http://127.0.0.1:8000.
+The API will be available at http://127.0.0.1:8000. Opening that URL in a browser
+shows a Swagger page for trying the endpoints. To call one that needs a login,
+click **Authorize** and enter `Bearer YOUR_ACCESS_TOKEN`.
 
 ### Where endpoints live
 Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,

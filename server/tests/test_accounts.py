@@ -145,3 +145,13 @@ def test_logout_revokes_refresh_token(mock_revoke):
 def test_logout_without_token_still_succeeds(mock_revoke):
     assert TEST_CLIENT.post(acc.LOGOUT_EP).status_code == OK
     mock_revoke.assert_not_called()
+
+
+@pytest.mark.parametrize('endpoint', [
+    acc.REGISTER_EP, acc.LOGIN_EP, acc.REFRESH_EP, acc.LOGOUT_EP,
+])
+def test_swagger_documents_request_body(endpoint):
+    spec = TEST_CLIENT.get('/swagger.json').get_json()
+    params = spec['paths'][endpoint]['post']['parameters']
+    assert [param['in'] for param in params] == ['body']
+    assert 'Bearer' in spec['securityDefinitions']

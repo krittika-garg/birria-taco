@@ -4,7 +4,7 @@ Accounts: register, log in, refresh tokens and log out.
 from http import HTTPStatus
 
 from flask import current_app, request, session
-from flask_restx import Namespace, Resource
+from flask_restx import Namespace, Resource, fields
 
 import security.auth as auth
 import security.refresh_tokens as refresh
@@ -17,6 +17,18 @@ REGISTER_EP = '/register'
 LOGIN_EP = '/login'
 REFRESH_EP = '/refresh'
 LOGOUT_EP = '/logout'
+
+# These only document the request bodies in Swagger; the handlers validate.
+CREDENTIALS = ns.model('Credentials', {
+    'username': fields.String(required=True),
+    'password': fields.String(required=True),
+})
+REFRESH_BODY = ns.model('RefreshBody', {
+    'refresh_token': fields.String(required=True),
+})
+LOGOUT_BODY = ns.model('LogoutBody', {
+    'refresh_token': fields.String(),
+})
 
 
 def _token_response(username, secret):
@@ -47,6 +59,7 @@ def _credentials():
 
 @ns.route(REGISTER_EP)
 class Register(Resource):
+    @ns.expect(CREDENTIALS)
     def post(self):
         """
         Create an account from JSON {username, password}.
@@ -62,6 +75,7 @@ class Register(Resource):
 
 @ns.route(LOGIN_EP)
 class Login(Resource):
+    @ns.expect(CREDENTIALS)
     def post(self):
         """
         Log in with JSON {username, password}; returns access and refresh
@@ -80,6 +94,7 @@ class Login(Resource):
 
 @ns.route(REFRESH_EP)
 class Refresh(Resource):
+    @ns.expect(REFRESH_BODY)
     def post(self):
         """
         Swap JSON {refresh_token} for new access and refresh tokens.
@@ -100,6 +115,7 @@ class Refresh(Resource):
 
 @ns.route(LOGOUT_EP)
 class Logout(Resource):
+    @ns.expect(LOGOUT_BODY)
     def post(self):
         """
         Log out; JSON {refresh_token} revokes that token.

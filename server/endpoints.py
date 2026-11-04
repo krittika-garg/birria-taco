@@ -18,7 +18,9 @@ app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY')
 CORS(app)
-api = Api(app)
+api = Api(app, security='Bearer', authorizations={
+    'Bearer': {'type': 'apiKey', 'in': 'header', 'name': 'Authorization'},
+})
 
 for feature in (accounts, neighborhoods, restaurants, states):
     api.add_namespace(feature.ns)
