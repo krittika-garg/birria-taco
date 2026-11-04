@@ -10,7 +10,7 @@ from flask import Flask
 from flask_restx import Resource, Api
 from flask_cors import CORS
 
-from server import accounts, neighborhoods, restaurants, states
+from server import accounts, neighborhoods, rankings, restaurants, states
 
 app = Flask(__name__)
 # Set SECRET_KEY in prod; the random fallback resets sessions on restart.
@@ -22,7 +22,7 @@ api = Api(app, security='Bearer', authorizations={
     'Bearer': {'type': 'apiKey', 'in': 'header', 'name': 'Authorization'},
 })
 
-for feature in (accounts, neighborhoods, restaurants, states):
+for feature in (accounts, neighborhoods, rankings, restaurants, states):
     api.add_namespace(feature.ns)
 
 ENDPOINT_EP = '/endpoints'
