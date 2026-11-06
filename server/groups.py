@@ -39,8 +39,6 @@ def _live(group):
     return {**group, 'expires_at': expires_at.isoformat()}
 
 
-# ponytail: expired groups are refused but never removed. Add a TTL
-# index on expires_at when the collection grows.
 @ns.route(GROUPS_EP)
 class Groups(Resource):
     method_decorators = [login_required]
@@ -50,6 +48,8 @@ class Groups(Resource):
         Start a group with you as host and only member. Share
         invite_token so friends can join through /groups/join/<token>.
         """
+        dbc.create_index(
+            GROUPS_COLLECT, [('expires_at', 1)], expireAfterSeconds=0)
         group = {
             'host': g.current_user,
             'members': [g.current_user],
