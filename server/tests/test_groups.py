@@ -137,3 +137,34 @@ def test_non_member_cannot_get(db):
     group = start_group(db)
     response = client_for('alice').get(f"{gr.GROUPS_EP}/{group['_id']}")
     assert response.status_code == 404
+
+
+def test_leave_group(db, monkeypatch):
+    group = start_group(db)
+    alice = client_for('alice')
+    alice.post(f"/groups/join/{group['invite_token']}")
+
+    def pull_member(collection, filt, update):
+        assert collection == gr.GROUPS_COLLECT
+        assert filt == {'_id': ObjectId(group['_id'])}
+        assert update == {'$pull': {'members': 'alice'}}
+        db[0]['members'].remove('alice')
+
+    monkeypatch.setattr(dbc, 'update_raw', pull_member)
+    url = f"/groups/{group['_id']}"
+    assert alice.post(url + '/leave').status_code == 200
+    assert db[0]['members'] == ['bob']
+    assert alice.get(url).status_code == 404
+
+
+@pytest.mark.parametrize('user, expected', [('bob', 409), ('alice', 404)])
+def test_leave_rejected(db, user, expected):
+    group = start_group(db)
+    response = client_for(user).post(f"/groups/{group['_id']}/leave")
+    assert response.status_code == expected
+    assert db[0]['members'] == ['bob']
+
+
+def test_leave_requires_login():
+    response = app.test_client().post(f'/groups/{ObjectId()}/leave')
+    assert response.status_code == 401

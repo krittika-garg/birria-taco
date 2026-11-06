@@ -95,3 +95,28 @@ class JoinGroup(Resource):
         if g.current_user not in group['members']:
             group['members'].append(g.current_user)
         return {'group': _live(group)}
+
+
+@ns.route('/groups/<string:group_id>/leave')
+class LeaveGroup(Resource):
+    method_decorators = [login_required]
+
+    def post(self, group_id):
+        """Leave a live group; hosts must remain."""
+        try:
+            obj_id = ObjectId(group_id)
+        except (InvalidId, TypeError):
+            return {MESSAGE: GROUP_NOT_FOUND}, HTTPStatus.NOT_FOUND
+
+        group = dbc.read_one(
+            GROUPS_COLLECT, {'_id': obj_id, 'members': g.current_user})
+        if not group or not _live(group):
+            return {MESSAGE: GROUP_NOT_FOUND}, HTTPStatus.NOT_FOUND
+        if group['host'] == g.current_user:
+            return {MESSAGE: 'Host cannot leave the group'}, \
+                HTTPStatus.CONFLICT
+
+        dbc.update_raw(
+            GROUPS_COLLECT, {'_id': obj_id},
+            {'$pull': {'members': g.current_user}})
+        return {MESSAGE: 'Left group'}
