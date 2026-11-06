@@ -89,8 +89,12 @@ class Restaurants(Resource):
     def get(self):
         """Return the logged-in user's saved restaurants."""
         username = g.current_user
+        filters = {'user': username}
+        cuisine = request.args.get('cuisine', '').strip()
+        if cuisine:
+            filters['cuisine'] = cuisine
         restaurants = dbc.read(
-            RESTAURANTS_COLLECT, no_id=False, filt={'user': username})
+            RESTAURANTS_COLLECT, no_id=False, filt=filters)
         # Best-rated first; unrated entries last.
         restaurants.sort(key=lambda r: (r.get('rating') is None,
                                         -(r.get('rating') or 0)))
