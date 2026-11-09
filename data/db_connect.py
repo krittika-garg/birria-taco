@@ -123,12 +123,17 @@ def create_index(collection, keys, db=SE_DB, **kwargs):
 
 
 @needs_connection
-def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
+def read(collection, db=SE_DB, no_id=True, filt=None,
+         projection=None) -> list:
     """
     Returns a list from the db, optionally restricted by a filter.
+    A projection (e.g. {'boundary': 0}) limits which fields come back.
     """
+    coll = client[db][collection]
+    cursor = (coll.find(filt or {}, projection) if projection
+              else coll.find(filt or {}))
     ret = []
-    for doc in client[db][collection].find(filt or {}):
+    for doc in cursor:
         if no_id:
             del doc[MONGO_ID]
         else:
