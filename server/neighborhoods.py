@@ -13,7 +13,11 @@ from places.load import NEIGHBORHOOD, PLACES_COLLECT, geo_point
 ns = Namespace('neighborhoods', path='/')
 
 MESSAGE = 'Message'
+NEIGHBORHOODS_EP = '/neighborhoods'
 NEIGHBORHOOD_AT_EP = '/neighborhoods/at'
+
+BOROUGHS = ('Bronx', 'Brooklyn', 'Manhattan', 'Queens', 'Staten Island')
+BOROUGH_ERROR = 'borough must be one of: ' + ', '.join(BOROUGHS)
 
 LAT_LON_NUMERIC_ERROR = 'Provide numeric lat and lon query parameters'
 LAT_LON_BODY_NUMERIC_ERROR = 'lat and lon must be numbers'
@@ -55,6 +59,18 @@ def parse_lat_lon():
     return (lat, lon), None
 
 
+def parse_borough(text):
+    """
+    Return the canonical borough name for text, ignoring case and extra
+    whitespace, or None if it isn't a borough.
+    """
+    wanted = ' '.join(text.split()).casefold()
+    for borough in BOROUGHS:
+        if borough.casefold() == wanted:
+            return borough
+    return None
+
+
 def find_neighborhood(lat, lon):
     """
     Return the neighborhood whose boundary contains lat, lon, without
@@ -69,6 +85,24 @@ def find_neighborhood(lat, lon):
     neighborhood.pop('_id', None)
     neighborhood.pop('boundary', None)
     return neighborhood
+
+
+@ns.route(NEIGHBORHOODS_EP)
+class Neighborhoods(Resource):
+    def get(self):
+        """
+        List NYC neighborhoods sorted by name, optionally in one borough.
+        """
+        filt = {'type': NEIGHBORHOOD}
+        if 'borough' in request.args:
+            borough = parse_borough(request.args['borough'])
+            if borough is None:
+                return {MESSAGE: BOROUGH_ERROR}, HTTPStatus.BAD_REQUEST
+            filt['borough'] = borough
+        neighborhoods = dbc.read(
+            PLACES_COLLECT, filt=filt, projection={'boundary': 0})
+        neighborhoods.sort(key=lambda hood: hood['name'])
+        return {'neighborhoods': neighborhoods}
 
 
 @ns.route(NEIGHBORHOOD_AT_EP)

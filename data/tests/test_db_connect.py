@@ -110,6 +110,16 @@ def test_read_keeps_ids_as_strings(fake_collection):
     fake_collection.find.assert_called_once_with({"name": "x"})
 
 
+def test_read_passes_projection_and_drops_id(fake_collection):
+    fake_collection.find.return_value = [
+        {dbc.MONGO_ID: ObjectId(), "name": "x"}]
+    docs = dbc.read("places", filt={"name": "x"},
+                    projection={"boundary": 0})
+    assert docs == [{"name": "x"}]
+    fake_collection.find.assert_called_once_with(
+        {"name": "x"}, {"boundary": 0})
+
+
 def test_read_one_returns_none_when_missing(fake_collection):
     fake_collection.find.return_value = []
     assert dbc.read_one("restaurants", {"name": "nowhere"}) is None
