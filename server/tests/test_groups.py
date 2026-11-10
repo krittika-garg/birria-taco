@@ -25,13 +25,21 @@ def client_for(user):
     return client
 
 
+class FakeCollection(list):
+    """A list of group docs that also records requested indexes."""
+    def __init__(self):
+        super().__init__()
+        self.indexes = []
+
+
 @pytest.fixture
 def db(monkeypatch):
     """
     In-memory groups collection. Filters match like Mongo's: a scalar
-    against an array field means "array contains it".
+    against an array field means "array contains it". Index requests are
+    recorded in db.indexes instead of reaching a real database.
     """
-    docs = []
+    docs = FakeCollection()
 
     def matches(doc, filt):
         return all(v in doc.get(k, []) if isinstance(doc.get(k), list)
@@ -54,9 +62,13 @@ def db(monkeypatch):
                 if member not in doc['members']:
                     doc['members'].append(member)
 
+    def create_index(collection, keys, **options):
+        docs.indexes.append((collection, keys, options))
+
     monkeypatch.setattr(dbc, 'read_one', read_one)
     monkeypatch.setattr(dbc, 'create', create)
     monkeypatch.setattr(dbc, 'update_raw', update_raw)
+    monkeypatch.setattr(dbc, 'create_index', create_index)
     return docs
 
 
@@ -83,6 +95,12 @@ def test_create(db):
     expires = datetime.fromisoformat(group['expires_at'])
     left = expires - datetime.now(timezone.utc)
     assert timedelta(hours=1, minutes=59) < left <= timedelta(hours=2)
+
+
+def test_create_requests_ttl_index(db):
+    start_group(db)
+    assert db.indexes == [
+        (gr.GROUPS_COLLECT, [('expires_at', 1)], {'expireAfterSeconds': 0})]
 
 
 def test_invite_tokens_differ(db):
