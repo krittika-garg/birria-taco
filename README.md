@@ -41,6 +41,20 @@ The API will be available at http://127.0.0.1:8000. Opening that URL in a browse
 shows a Swagger page for trying the endpoints. To call one that needs a login,
 click **Authorize** and enter `Bearer YOUR_ACCESS_TOKEN`.
 
+### Use MongoDB locally
+Start MongoDB in Docker (needs Docker Desktop with WSL integration turned on), or
+install MongoDB Community and run `mongod` instead:
+~~~
+make mongo
+~~~
+With the virtualenv active, load the states and NYC neighborhoods:
+~~~
+make seed
+~~~
+`./local.sh` then uses local Mongo by default. To use the cloud instead, set
+`CLOUD_MONGO=1` and `MONGO_URI` in `.env`. For a non-default host or port, set
+`MONGO_LOCAL_URI`.
+
 ### Where endpoints live
 Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,
 `states.py`, `neighborhoods.py`, ...) with its own Flask-RESTX `Namespace`, and

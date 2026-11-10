@@ -9,6 +9,7 @@ import pymongo as pm
 
 LOCAL = "0"
 CLOUD = "1"
+LOCAL_URI_DEFAULT = 'mongodb://localhost:27017/'
 
 SE_DB = 'seDB'
 
@@ -36,8 +37,10 @@ def connect_db():
             print('Connecting to Mongo in the cloud.')
             client = pm.MongoClient(uri)
         else:
-            print("Connecting to Mongo locally.")
-            client = pm.MongoClient()
+            uri = os.environ.get('MONGO_LOCAL_URI', LOCAL_URI_DEFAULT)
+            # Anything before the last @ is credentials: don't log those.
+            print(f"Connecting to Mongo locally at {uri.rsplit('@', 1)[-1]}")
+            client = pm.MongoClient(uri)
     return client
 
 
