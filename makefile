@@ -30,3 +30,9 @@ dev_env: FORCE
 
 docs: FORCE
 	cd $(API_DIR); make docs
+
+mongo: FORCE
+	docker start birria-mongo 2>/dev/null || docker run -d --name birria-mongo -p 27017:27017 -v birria-mongo-data:/data/db mongo:7
+
+seed: FORCE
+	PYTHONPATH=$$(pwd) python states/load.py states/raw_data/states.csv && PYTHONPATH=$$(pwd) python places/load.py

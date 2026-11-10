@@ -48,6 +48,7 @@ def fresh_connection(monkeypatch):
     monkeypatch.setattr(dbc, "client", None)
     monkeypatch.delenv("CLOUD_MONGO", raising=False)
     monkeypatch.delenv("MONGO_URI", raising=False)
+    monkeypatch.delenv("MONGO_LOCAL_URI", raising=False)
 
 
 @pytest.fixture
@@ -64,9 +65,21 @@ def fake_collection(monkeypatch):
 @patch("data.db_connect.pm.MongoClient")
 def test_connect_db_local(mock_client, fresh_connection):
     client = dbc.connect_db()
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
     assert client is mock_client.return_value
     assert dbc.client is client
+
+
+@patch("data.db_connect.pm.MongoClient")
+def test_connect_db_local_uri_override(mock_client, fresh_connection,
+                                       monkeypatch, capsys):
+    uri = "mongodb://user:hunter2@otherhost:27018/"
+    monkeypatch.setenv("MONGO_LOCAL_URI", uri)
+    dbc.connect_db()
+    mock_client.assert_called_once_with(uri)
+    output = capsys.readouterr().out
+    assert "otherhost:27018" in output
+    assert "hunter2" not in output
 
 
 @patch("data.db_connect.pm.MongoClient")
@@ -249,7 +262,7 @@ def test_needs_connection_preserves_metadata():
 def test_helpers_reuse_one_connection(mock_client, fresh_connection):
     dbc.read('restaurants')
     dbc.read('restaurants')
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
 
 
 @pytest.mark.parametrize('name', DECORATED_HELPERS)
