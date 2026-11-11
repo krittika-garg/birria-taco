@@ -131,10 +131,16 @@ then `disliked`. Both endpoints need the Bearer token.
   `same` to put it right there. Returns the next `compare`, or
   `{"done": true, "position": n}` once it is saved (`n` counts from 0 across
   the whole list). Sessions expire after 15 minutes (`404`).
+- `GET /rankings` returns `{"rankings": [...]}`, your list best first. Each
+  entry has `restaurant_id`, `bucket`, `ranked_at` and a 0-10 `score`.
+
+A place's `score` comes from its position: each bucket spreads its places
+evenly over a band (`liked` 6.7-10, `fine` 3.4-6.6, `disliked` 0-3.3), best
+first, so scores shift as you rank more places. It is separate from the
+manual `rating` on `/restaurants`, which you set yourself.
 
 Every `better`/`worse` answer is also stored in `comparisons` for the city
-leaderboard. Not yet: re-ranking a place already in your list, an endpoint to
-read your ranked list, and protection against two tabs ranking at once.
+leaderboard. Not yet: re-ranking a place already in your list.
 
 `GET`, `PUT`, and `DELETE` on `/restaurants/<id>` return `404` for an `id`
 that doesn't exist or belongs to another user. Ownership comes from the verified JWT; a supplied `user`
