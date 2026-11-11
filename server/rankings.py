@@ -21,6 +21,7 @@ from server.restaurants import RESTAURANTS_COLLECT
 ns = Namespace('rankings', path='/')
 
 MESSAGE = 'Message'
+RANKINGS_EP = '/rankings'
 RANK_SESSIONS_EP = '/rank-sessions'
 RANK_ANSWER_EP = '/rank-sessions/<string:session_id>/answer'
 RANKINGS_COLLECT = 'rankings'
@@ -123,6 +124,26 @@ def _save(username, resid, bucket, position, pairs, version):
             'user': username, 'winner_id': winner, 'loser_id': loser,
             'created_at': now})
     return {'done': True, 'position': position}
+
+
+@ns.route(RANKINGS_EP)
+class Rankings(Resource):
+    method_decorators = [login_required]
+
+    def get(self):
+        """
+        Return your ranked list, best first, each place with its bucket
+        and its 0-10 personal score.
+        """
+        ordered, _ = _load_ranking(g.current_user)
+        scores = personal_scores(ordered)
+        return {'rankings': [
+            {**entry,
+             # Mongo hands datetimes back without a timezone; they are UTC.
+             'ranked_at': entry['ranked_at'].replace(
+                 tzinfo=timezone.utc).isoformat(),
+             'score': scores[entry['restaurant_id']]}
+            for entry in ordered]}
 
 
 @ns.route(RANK_SESSIONS_EP)
