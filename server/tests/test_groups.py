@@ -50,6 +50,10 @@ def db(monkeypatch):
         return {**found[0], '_id': str(found[0]['_id']),
                 'members': list(found[0]['members'])} if found else None
 
+    def read(collection, no_id=True, filt=None):
+        return [{**d, '_id': str(d['_id']), 'members': list(d['members'])}
+                for d in docs if matches(d, filt or {})]
+
     def create(collection, doc):
         doc = {**doc, '_id': ObjectId()}
         docs.append(doc)
@@ -65,6 +69,7 @@ def db(monkeypatch):
     def create_index(collection, keys, **options):
         docs.indexes.append((collection, keys, options))
 
+    monkeypatch.setattr(dbc, 'read', read)
     monkeypatch.setattr(dbc, 'read_one', read_one)
     monkeypatch.setattr(dbc, 'create', create)
     monkeypatch.setattr(dbc, 'update_raw', update_raw)
@@ -79,6 +84,7 @@ def start_group(db):
 
 
 @pytest.mark.parametrize('method, url', [
+    ('get', gr.GROUPS_EP),
     ('post', gr.GROUPS_EP),
     ('get', f'{gr.GROUPS_EP}/{ObjectId()}'),
     ('post', f'{gr.GROUPS_EP}/join/abc'),
@@ -186,3 +192,28 @@ def test_leave_rejected(db, user, expected):
 def test_leave_requires_login():
     response = app.test_client().post(f'/groups/{ObjectId()}/leave')
     assert response.status_code == 401
+
+
+def test_list_my_groups(db):
+    first = start_group(db)
+    second = start_group(db)
+    alice = client_for('alice')
+    assert alice.get(gr.GROUPS_EP).get_json() == {'groups': []}
+
+    alice.post(f"{gr.GROUPS_EP}/join/{first['invite_token']}")
+    response = alice.get(gr.GROUPS_EP)
+    assert response.status_code == 200
+    assert [grp['_id'] for grp in response.get_json()['groups']] == [
+        first['_id']]
+
+    ids = [grp['_id'] for grp in
+           client_for('bob').get(gr.GROUPS_EP).get_json()['groups']]
+    assert ids == [second['_id'], first['_id']]
+
+
+def test_list_skips_expired_groups(db):
+    start_group(db)
+    db[0]['expires_at'] = (datetime.now(timezone.utc).replace(tzinfo=None)
+                           - timedelta(minutes=1))
+    response = client_for('bob').get(gr.GROUPS_EP)
+    assert response.get_json() == {'groups': []}

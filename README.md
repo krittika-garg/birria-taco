@@ -129,6 +129,8 @@ All group endpoints need an access token.
 - `POST /groups/join/<invite_token>` adds you to the group and returns
   `{"group": {...}}`. Joining twice is harmless.
 - `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
+- `GET /groups` returns `{"groups": [...]}` with the live groups you are a
+  member of, newest first.
 
-All three return `404` for an expired group or a bad token, and `GET` also
+`GET /groups/<id>` and both `POST`s return `404` for an expired group or a bad token, and `GET` also
 returns `404` to non-members. Voting and live updates are not implemented yet.
