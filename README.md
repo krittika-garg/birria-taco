@@ -105,7 +105,10 @@ issued keeps working until it expires.
   Text is trimmed; invalid input returns `400`.
 - `GET /restaurants` returns `{"restaurants": [...]}` containing only the
   logged-in user's entries, or an empty list, sorted by `rating` (highest
-  first, unrated last). Entries include a string `_id`.
+  first, unrated last). Entries include a string `_id`. Optional `cuisine`
+  and `borough` query parameters keep only exact matches, e.g.
+  `GET /restaurants?borough=Brooklyn`. Borough comes from the neighborhood
+  the entry's `lat`/`lon` falls in, so entries without a location never match.
 - `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
   logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using

@@ -440,3 +440,20 @@ def test_cuisine_filter(read, cuisine):
         expected['cuisine'] = 'Mexican'
     read.assert_called_once_with(
         rest.RESTAURANTS_COLLECT, no_id=False, filt=expected)
+
+
+@pytest.mark.parametrize('borough', [' Brooklyn ', ''])
+@patch('data.db_connect.read', return_value=[], autospec=True)
+def test_borough_filter(read, borough):
+    client = app.test_client()
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    response = client.get(
+        '/restaurants',
+        query_string={'borough': borough, 'cuisine': 'Mexican'},
+        headers={'Authorization': f'Bearer {token}'})
+    assert response.status_code == 200
+    expected = {'user': 'bob', 'cuisine': 'Mexican'}
+    if borough.strip():
+        expected['neighborhood.borough'] = 'Brooklyn'
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt=expected)

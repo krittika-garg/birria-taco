@@ -93,6 +93,9 @@ class Restaurants(Resource):
         cuisine = request.args.get('cuisine', '').strip()
         if cuisine:
             filters['cuisine'] = cuisine
+        borough = request.args.get('borough', '').strip()
+        if borough:
+            filters['neighborhood.borough'] = borough
         restaurants = dbc.read(
             RESTAURANTS_COLLECT, no_id=False, filt=filters)
         # Best-rated first; unrated entries last.
