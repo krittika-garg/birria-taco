@@ -48,6 +48,7 @@ def fresh_connection(monkeypatch):
     monkeypatch.setattr(dbc, "client", None)
     monkeypatch.delenv("CLOUD_MONGO", raising=False)
     monkeypatch.delenv("MONGO_URI", raising=False)
+    monkeypatch.delenv("MONGO_LOCAL_URI", raising=False)
 
 
 @pytest.fixture
@@ -64,9 +65,21 @@ def fake_collection(monkeypatch):
 @patch("data.db_connect.pm.MongoClient")
 def test_connect_db_local(mock_client, fresh_connection):
     client = dbc.connect_db()
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
     assert client is mock_client.return_value
     assert dbc.client is client
+
+
+@patch("data.db_connect.pm.MongoClient")
+def test_connect_db_local_uri_override(mock_client, fresh_connection,
+                                       monkeypatch, capsys):
+    uri = "mongodb://user:hunter2@otherhost:27018/"
+    monkeypatch.setenv("MONGO_LOCAL_URI", uri)
+    dbc.connect_db()
+    mock_client.assert_called_once_with(uri)
+    output = capsys.readouterr().out
+    assert "otherhost:27018" in output
+    assert "hunter2" not in output
 
 
 @patch("data.db_connect.pm.MongoClient")
@@ -108,6 +121,16 @@ def test_read_keeps_ids_as_strings(fake_collection):
     docs = dbc.read("restaurants", no_id=False, filt={"name": "x"})
     assert docs == [{dbc.MONGO_ID: str(oid), "name": "x"}]
     fake_collection.find.assert_called_once_with({"name": "x"})
+
+
+def test_read_passes_projection_and_drops_id(fake_collection):
+    fake_collection.find.return_value = [
+        {dbc.MONGO_ID: ObjectId(), "name": "x"}]
+    docs = dbc.read("places", filt={"name": "x"},
+                    projection={"boundary": 0})
+    assert docs == [{"name": "x"}]
+    fake_collection.find.assert_called_once_with(
+        {"name": "x"}, {"boundary": 0})
 
 
 def test_read_one_returns_none_when_missing(fake_collection):
@@ -239,7 +262,7 @@ def test_needs_connection_preserves_metadata():
 def test_helpers_reuse_one_connection(mock_client, fresh_connection):
     dbc.read('restaurants')
     dbc.read('restaurants')
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
 
 
 @pytest.mark.parametrize('name', DECORATED_HELPERS)

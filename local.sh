@@ -3,6 +3,7 @@
 export FLASK_ENV=development
 export PROJ_DIR=$PWD
 export DEBUG=1
+export CLOUD_MONGO=${CLOUD_MONGO:-0}
 
 # secrets (SECRET_KEY etc.) live in a gitignored .env:
 if [ -f .env ]; then set -a; . ./.env; set +a; fi

@@ -9,6 +9,7 @@ import pymongo as pm
 
 LOCAL = "0"
 CLOUD = "1"
+LOCAL_URI_DEFAULT = 'mongodb://localhost:27017/'
 
 SE_DB = 'seDB'
 
@@ -36,8 +37,10 @@ def connect_db():
             print('Connecting to Mongo in the cloud.')
             client = pm.MongoClient(uri)
         else:
-            print("Connecting to Mongo locally.")
-            client = pm.MongoClient()
+            uri = os.environ.get('MONGO_LOCAL_URI', LOCAL_URI_DEFAULT)
+            # Anything before the last @ is credentials: don't log those.
+            print(f"Connecting to Mongo locally at {uri.rsplit('@', 1)[-1]}")
+            client = pm.MongoClient(uri)
     return client
 
 
@@ -123,12 +126,17 @@ def create_index(collection, keys, db=SE_DB, **kwargs):
 
 
 @needs_connection
-def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
+def read(collection, db=SE_DB, no_id=True, filt=None,
+         projection=None) -> list:
     """
     Returns a list from the db, optionally restricted by a filter.
+    A projection (e.g. {'boundary': 0}) limits which fields come back.
     """
+    coll = client[db][collection]
+    cursor = (coll.find(filt or {}, projection) if projection
+              else coll.find(filt or {}))
     ret = []
-    for doc in client[db][collection].find(filt or {}):
+    for doc in cursor:
         if no_id:
             del doc[MONGO_ID]
         else:

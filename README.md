@@ -41,6 +41,20 @@ The API will be available at http://127.0.0.1:8000. Opening that URL in a browse
 shows a Swagger page for trying the endpoints. To call one that needs a login,
 click **Authorize** and enter `Bearer YOUR_ACCESS_TOKEN`.
 
+### Use MongoDB locally
+Start MongoDB in Docker (needs Docker Desktop with WSL integration turned on), or
+install MongoDB Community and run `mongod` instead:
+~~~
+make mongo
+~~~
+With the virtualenv active, load the states and NYC neighborhoods:
+~~~
+make seed
+~~~
+`./local.sh` then uses local Mongo by default. To use the cloud instead, set
+`CLOUD_MONGO=1` and `MONGO_URI` in `.env`. For a non-default host or port, set
+`MONGO_LOCAL_URI`.
+
 ### Where endpoints live
 Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,
 `states.py`, `neighborhoods.py`, ...) with its own Flask-RESTX `Namespace`, and
@@ -127,3 +141,17 @@ that doesn't exist or belongs to another user. Ownership comes from the verified
 field cannot change it. Each saved entry is personal, and repeated entries
 are allowed. Comparison-based ranking and a shared restaurant catalog are not implemented
 yet.
+
+## Group mode
+
+Groups let friends decide where to eat together. A group lasts 2 hours.
+All group endpoints need an access token.
+
+- `POST /groups` starts a group with you as host and only member, and returns
+  `201` with `{"group": {...}}`. Share its `invite_token` with friends.
+- `POST /groups/join/<invite_token>` adds you to the group and returns
+  `{"group": {...}}`. Joining twice is harmless.
+- `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
+
+All three return `404` for an expired group or a bad token, and `GET` also
+returns `404` to non-members. Voting and live updates are not implemented yet.
