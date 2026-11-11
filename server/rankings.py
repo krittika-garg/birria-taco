@@ -28,6 +28,8 @@ RANK_SESSIONS_COLLECT = 'rank_sessions'
 COMPARISONS_COLLECT = 'comparisons'
 
 BUCKETS = ('liked', 'fine', 'disliked')  # best first
+# Score range (low, high) each bucket's places spread across.
+BANDS = {'liked': (6.7, 10.0), 'fine': (3.4, 6.6), 'disliked': (0.0, 3.3)}
 BETTER, WORSE, SAME = 'better', 'worse', 'same'
 ANSWERS = (BETTER, WORSE, SAME)
 SESSION_MINUTES = 15
@@ -45,6 +47,23 @@ def bucket_bounds(ordered, bucket):
     lo = sum(BUCKETS.index(entry['bucket']) < rank for entry in ordered)
     hi = lo + sum(entry['bucket'] == bucket for entry in ordered)
     return lo, hi
+
+
+def personal_scores(ordered):
+    """
+    Map each restaurant_id in ordered to a 0-10 score. A bucket's n
+    places split its band into n equal slots, best first, and each
+    place scores the middle of its slot. Derived on read, never stored,
+    so scores always match the current list.
+    """
+    scores = {}
+    for bucket, (low, high) in BANDS.items():
+        ids = [entry['restaurant_id'] for entry in ordered
+               if entry['bucket'] == bucket]
+        for i, resid in enumerate(ids):
+            scores[resid] = round(high - (high - low) * (i + 0.5) / len(ids),
+                                  1)
+    return scores
 
 
 def narrow(lo, hi, answer):
