@@ -122,6 +122,74 @@ def test_bucket_bounds():
     assert rk.bucket_bounds(ordered[:2], 'fine') == (2, 2)
 
 
+def entries(*buckets):
+    """Ordered entries named r0, r1, ... in the given buckets."""
+    return [{'restaurant_id': f'r{i}', 'bucket': bucket}
+            for i, bucket in enumerate(buckets)]
+
+
+@pytest.mark.parametrize('buckets, expected', [
+    ((), {}),
+    (('liked',), {'r0': 8.3}),  # 8.35 is stored as 8.3499...
+    (('liked', 'liked'), {'r0': 9.2, 'r1': 7.5}),
+    (('liked',) * 4, {'r0': 9.6, 'r1': 8.8, 'r2': 7.9, 'r3': 7.1}),
+    (('liked', 'fine', 'disliked'), {'r0': 8.3, 'r1': 5.0, 'r2': 1.6}),
+    (('fine', 'fine'), {'r0': 5.8, 'r1': 4.2}),
+])
+def test_personal_scores(buckets, expected):
+    assert rk.personal_scores(entries(*buckets)) == expected
+
+
+@pytest.mark.parametrize('bucket', rk.BUCKETS)
+@pytest.mark.parametrize('n', [1, 2, 7, 33])
+def test_personal_scores_stay_in_band_best_first(bucket, n):
+    low, high = rk.BANDS[bucket]
+    ordered = entries(*[bucket] * n)
+    scores = [rk.personal_scores(ordered)[e['restaurant_id']]
+              for e in ordered]
+    assert all(low <= s <= high for s in scores)
+    assert scores == sorted(scores, reverse=True)
+
+
+def test_personal_scores_bucket_beats_position():
+    # The worst liked place still outscores the best fine place.
+    scores = rk.personal_scores(entries(*['liked'] * 33, 'fine'))
+    assert scores['r32'] > scores['r33']
+
+
+def test_get_rankings_login_required():
+    assert app.test_client().get(rk.RANKINGS_EP).status_code == 401
+
+
+def test_get_rankings_empty(client, db):
+    resp = client.get(rk.RANKINGS_EP)
+    assert resp.status_code == 200
+    assert resp.get_json() == {'rankings': []}
+
+
+def test_get_rankings_returns_scored_list(client, db):
+    ranked_at = datetime(2026, 11, 11, 5, 0)  # Mongo returns naive UTC
+    ordered = [{**e, 'ranked_at': ranked_at}
+               for e in entries('liked', 'liked', 'disliked')]
+    db[rk.RANKINGS_COLLECT] = [
+        {'_id': 'bob', 'version': 3, 'ordered': ordered},
+        {'_id': 'alice', 'version': 1, 'ordered': [
+            {'restaurant_id': 'x', 'bucket': 'liked',
+             'ranked_at': ranked_at}]},
+    ]
+    resp = client.get(rk.RANKINGS_EP)
+    assert resp.status_code == 200
+    stamp = '2026-11-11T05:00:00+00:00'
+    assert resp.get_json() == {'rankings': [
+        {'restaurant_id': 'r0', 'bucket': 'liked', 'ranked_at': stamp,
+         'score': 9.2},
+        {'restaurant_id': 'r1', 'bucket': 'liked', 'ranked_at': stamp,
+         'score': 7.5},
+        {'restaurant_id': 'r2', 'bucket': 'disliked', 'ranked_at': stamp,
+         'score': 1.6},
+    ]}
+
+
 @pytest.mark.parametrize('url', [
     rk.RANK_SESSIONS_EP, rk.RANK_SESSIONS_EP + f'/{ObjectId()}/answer'])
 def test_login_required(url):
