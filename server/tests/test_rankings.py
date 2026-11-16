@@ -68,6 +68,7 @@ def db(monkeypatch):
     monkeypatch.setattr(dbc, 'update', update)
     monkeypatch.setattr(dbc, 'delete', delete)
     monkeypatch.setattr(dbc, 'update_raw', MagicMock())
+    monkeypatch.setattr(dbc, 'create_index', MagicMock())
     return store
 
 
@@ -352,3 +353,10 @@ def test_empty_bucket_save_loses_race(client, db):
     response = client.post(rk.RANK_SESSIONS_EP, json={
         'restaurant_id': add_restaurant(db, 'Tacos'), 'bucket': 'liked'})
     assert response.status_code == 409
+
+
+def test_start_session_requests_ttl_index(client, db):
+    start_session(client, db)
+    dbc.create_index.assert_called_once_with(
+        rk.RANK_SESSIONS_COLLECT, [('expires_at', 1)],
+        expireAfterSeconds=0)

@@ -183,8 +183,10 @@ class RankSessions(Resource):
                 return {MESSAGE: LIST_CHANGED}, HTTPStatus.CONFLICT
             return saved, HTTPStatus.CREATED
 
-        # ponytail: sessions live in Mongo, not Redis; expired ones are
-        # rejected but not removed. Add a TTL index on expires_at.
+        # Automatically clean up expired sessions.
+        dbc.create_index(
+            RANK_SESSIONS_COLLECT, [('expires_at', 1)],
+            expireAfterSeconds=0)
         result = dbc.create(RANK_SESSIONS_COLLECT, {
             'user': username, 'restaurant_id': resid, 'bucket': bucket,
             'lo': lo, 'hi': hi, 'pairs': [], 'version': version,
