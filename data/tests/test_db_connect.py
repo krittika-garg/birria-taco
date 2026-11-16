@@ -269,3 +269,21 @@ def test_helpers_reuse_one_connection(mock_client, fresh_connection):
 def test_db_helpers_are_decorated(name):
     assert hasattr(getattr(dbc, name), '__wrapped__'), (
         f'{name} must use @needs_connection')
+
+
+def test_initialize_indexes(monkeypatch):
+    from unittest.mock import Mock, call
+    import data.db_connect as dbc
+
+    create_index = Mock()
+    monkeypatch.setattr(dbc, 'create_index', create_index)
+
+    dbc.initialize_indexes()
+
+    assert create_index.call_args_list == [
+        call('users', [('username', 1)], unique=True),
+        call('refresh_tokens', [('token_hash', 1)], unique=True),
+        call('refresh_tokens', [('expires_at', 1)], expireAfterSeconds=0),
+        call('groups', [('expires_at', 1)], expireAfterSeconds=0),
+        call('rank_sessions', [('expires_at', 1)], expireAfterSeconds=0),
+    ]
