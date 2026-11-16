@@ -48,8 +48,6 @@ class Groups(Resource):
         Start a group with you as host and only member. Share
         invite_token so friends can join through /groups/join/<token>.
         """
-        dbc.create_index(
-            GROUPS_COLLECT, [('expires_at', 1)], expireAfterSeconds=0)
         group = {
             'host': g.current_user,
             'members': [g.current_user],

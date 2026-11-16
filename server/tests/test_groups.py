@@ -99,8 +99,7 @@ def test_create(db):
 
 def test_create_requests_ttl_index(db):
     start_group(db)
-    assert db.indexes == [
-        (gr.GROUPS_COLLECT, [('expires_at', 1)], {'expireAfterSeconds': 0})]
+    assert db.indexes == []
 
 
 def test_invite_tokens_differ(db):

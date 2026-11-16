@@ -44,13 +44,11 @@ def test_hash_rejects_invalid_input(token):
 
 
 @patch('security.refresh_tokens.dbc.connect_db')
-def test_refresh_collection_indexes(connect):
+def test_refresh_collection_does_not_create_indexes(connect):
     collection = connect.return_value[dbc_name()][refresh.COLLECTION]
 
     assert refresh._collection() is collection
-    collection.create_index.assert_any_call('token_hash', unique=True)
-    collection.create_index.assert_any_call(
-        'expires_at', expireAfterSeconds=0)
+    collection.create_index.assert_not_called()
 
 
 def dbc_name():

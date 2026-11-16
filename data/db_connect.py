@@ -161,3 +161,15 @@ def fetch_all_as_dict(key, collection, db=SE_DB):
         del doc[MONGO_ID]
         ret[doc[key]] = doc
     return ret
+
+
+def initialize_indexes():
+    """Create application indexes during startup."""
+    create_index('users', [('username', 1)], unique=True)
+    create_index('refresh_tokens', [('token_hash', 1)], unique=True)
+    create_index(
+        'refresh_tokens', [('expires_at', 1)], expireAfterSeconds=0)
+    create_index(
+        'groups', [('expires_at', 1)], expireAfterSeconds=0)
+    create_index(
+        'rank_sessions', [('expires_at', 1)], expireAfterSeconds=0)

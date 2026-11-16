@@ -58,3 +58,11 @@ class Endpoints(Resource):
         """
         endpoints = sorted(rule.rule for rule in api.app.url_map.iter_rules())
         return {"Available endpoints": endpoints}
+
+
+def create_app():
+    """Initialize database indexes before serving requests."""
+    from data.db_connect import initialize_indexes
+
+    initialize_indexes()
+    return app

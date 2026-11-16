@@ -355,8 +355,6 @@ def test_empty_bucket_save_loses_race(client, db):
     assert response.status_code == 409
 
 
-def test_start_session_requests_ttl_index(client, db):
+def test_start_session_does_not_request_indexes(client, db):
     start_session(client, db)
-    dbc.create_index.assert_called_once_with(
-        rk.RANK_SESSIONS_COLLECT, [('expires_at', 1)],
-        expireAfterSeconds=0)
+    dbc.create_index.assert_not_called()
