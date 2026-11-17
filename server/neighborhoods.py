@@ -1,6 +1,8 @@
 """
-Neighborhood lookup, plus the lat/lon helpers other features share.
+Neighborhood lookup and leaderboards, plus the lat/lon helpers other
+features share.
 """
+from collections import Counter
 from http import HTTPStatus
 from math import isfinite
 
@@ -15,6 +17,16 @@ ns = Namespace('neighborhoods', path='/')
 MESSAGE = 'Message'
 NEIGHBORHOODS_EP = '/neighborhoods'
 NEIGHBORHOOD_AT_EP = '/neighborhoods/at'
+LEADERBOARD_EP = '/neighborhoods/<string:code>/leaderboard'
+
+NEIGHBORHOOD_NOT_FOUND = 'Neighborhood not found'
+
+# Bayesian prior weight: each restaurant's score starts as if it had this
+# many ratings at the neighborhood mean, so one rating can't top the board.
+LEADERBOARD_PRIOR = 3
+DEFAULT_LEADERBOARD_LIMIT = 10
+MAX_LEADERBOARD_LIMIT = 50
+LIMIT_ERROR = f'limit must be an integer from 1 to {MAX_LEADERBOARD_LIMIT}'
 
 BOROUGHS = ('Bronx', 'Brooklyn', 'Manhattan', 'Queens', 'Staten Island')
 BOROUGH_ERROR = 'borough must be one of: ' + ', '.join(BOROUGHS)
@@ -87,6 +99,78 @@ def find_neighborhood(lat, lon):
     return neighborhood
 
 
+def collapse_whitespace(text):
+    """Strip text and collapse each run of whitespace to one space."""
+    return ' '.join(text.split())
+
+
+def name_order(name):
+    """
+    Sort key for names: case-insensitive first; among names that differ
+    only in case, lowercase letters win ('Taqueria' before 'TAQUERIA').
+    """
+    return name.lower(), name.swapcase()
+
+
+def leaderboard(entries, prior=LEADERBOARD_PRIOR):
+    """
+    Rank restaurants from a list of {'name', 'rating'} entries.
+
+    Entries are grouped by name, ignoring case and whitespace. Each group
+    gets a Bayesian average,
+        score = (prior * m + sum_of_ratings) / (prior + count),
+    where m is the mean of all ratings in entries. Each group is shown
+    under its most common spelling, ties broken by name_order.
+
+    Returns a list of {'name', 'score', 'average', 'ratings'} (ratings is
+    the count), with score and average rounded to 2 decimals, sorted by
+    score desc, then ratings desc, then name_order.
+    """
+    if not entries:
+        return []
+    groups = {}
+    for entry in entries:
+        spelling = collapse_whitespace(entry['name'])
+        groups.setdefault(spelling.lower(), []).append(
+            (spelling, entry['rating']))
+    mean = sum(entry['rating'] for entry in entries) / len(entries)
+
+    board = []
+    for group in groups.values():
+        spellings = Counter(spelling for spelling, _ in group)
+        name = min(spellings,
+                   key=lambda s: (-spellings[s], *name_order(s)))
+        total = sum(rating for _, rating in group)
+        count = len(group)
+        board.append({
+            'name': name,
+            'score': round((prior * mean + total) / (prior + count), 2),
+            'average': round(total / count, 2),
+            'ratings': count,
+        })
+    board.sort(key=lambda r: (-r['score'], -r['ratings'],
+                              *name_order(r['name'])))
+    return board
+
+
+def parse_limit():
+    """
+    Read limit from the query string, defaulting to
+    DEFAULT_LEADERBOARD_LIMIT.
+    Returns (limit, None) on success, or (None, LIMIT_ERROR) on failure.
+    """
+    raw = request.args.get('limit')
+    if raw is None:
+        return DEFAULT_LEADERBOARD_LIMIT, None
+    try:
+        limit = int(raw)
+    except ValueError:
+        return None, LIMIT_ERROR
+    if not 1 <= limit <= MAX_LEADERBOARD_LIMIT:
+        return None, LIMIT_ERROR
+    return limit, None
+
+
 @ns.route(NEIGHBORHOODS_EP)
 class Neighborhoods(Resource):
     def get(self):
@@ -120,3 +204,36 @@ class NeighborhoodAt(Resource):
                 MESSAGE: 'No neighborhood found at that location'
             }, HTTPStatus.NOT_FOUND
         return {'neighborhood': neighborhood}
+
+
+@ns.route(LEADERBOARD_EP)
+class NeighborhoodLeaderboard(Resource):
+    def get(self, code):
+        """
+        Return the best-rated restaurants in one neighborhood, combining
+        every user's ratings. Optional limit (1-50, default 10).
+        """
+        # Imported here, not at the top: server.restaurants imports this
+        # module at load time, so a top-level import would be circular.
+        from server.restaurants import RESTAURANTS_COLLECT
+
+        limit, error = parse_limit()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        code = code.upper()
+        neighborhood = dbc.read_one(
+            PLACES_COLLECT, {'type': NEIGHBORHOOD, 'code': code})
+        if neighborhood is None:
+            return {MESSAGE: NEIGHBORHOOD_NOT_FOUND}, HTTPStatus.NOT_FOUND
+        entries = dbc.read(
+            RESTAURANTS_COLLECT,
+            filt={'neighborhood.code': code, 'rating': {'$ne': None}},
+            projection={'name': 1, 'rating': 1})
+        return {
+            'neighborhood': {
+                'name': neighborhood['name'],
+                'borough': neighborhood['borough'],
+                'code': neighborhood['code'],
+            },
+            'restaurants': leaderboard(entries)[:limit],
+        }
