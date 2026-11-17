@@ -286,4 +286,5 @@ def test_initialize_indexes(monkeypatch):
         call('refresh_tokens', [('expires_at', 1)], expireAfterSeconds=0),
         call('groups', [('expires_at', 1)], expireAfterSeconds=0),
         call('rank_sessions', [('expires_at', 1)], expireAfterSeconds=0),
+        call('restaurants', [('neighborhood.code', 1), ('rating', 1)]),
     ]
