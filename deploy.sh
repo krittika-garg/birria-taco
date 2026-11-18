@@ -1,24 +1,16 @@
 #!/bin/bash
-# This shell script deploys a new version to a server.
+# Deploys to PythonAnywhere: SSHes in and runs rebuild.sh there.
+set -euo pipefail
 
-PROJ_DIR=demo-repo4
-VENV=Fall2023
-PA_DOMAIN="Fall2023.pythonanywhere.com"
-PA_USER='Fall2023'
-echo "Project dir = $PROJ_DIR"
-echo "PA domain = $PA_DOMAIN"
-echo "Virtual env = $VENV"
+: "${PA_USER:?Set PA_USER to the PythonAnywhere username}"
+: "${PA_PASSWORD:?Set PA_PASSWORD to the PythonAnywhere password}"
+PROJ_DIR=${PROJ_DIR:-birria-taco}
+VENV=${VENV:-birria-taco}
+PA_DOMAIN=${PA_DOMAIN:-$PA_USER.pythonanywhere.com}
 
-if [ -z "$DEMO_PA_PWD" ]
-then
-    echo "The PythonAnywhere password var (DEMO_PA_PWD) must be set in the env."
-    exit 1
-fi
-
-echo "PA user = $PA_USER"
-echo "PA password = $DEMO_PA_PWD"
-
-echo "SSHing to PythonAnywhere."
-sshpass -p $DEMO_PA_PWD ssh -o "StrictHostKeyChecking no" $PA_USER@ssh.pythonanywhere.com << EOF
-    cd ~/$PROJ_DIR; PA_USER=$PA_USER PROJ_DIR=~/$PROJ_DIR VENV=$VENV PA_DOMAIN=$PA_DOMAIN ./rebuild.sh
-EOF
+echo "Deploying to $PA_DOMAIN"
+# -e reads the password from SSHPASS, so it stays out of the process list.
+SSHPASS=$PA_PASSWORD sshpass -e ssh -o StrictHostKeyChecking=no \
+    "$PA_USER@ssh.pythonanywhere.com" <<REMOTE
+cd ~/$PROJ_DIR && PA_USER=$PA_USER VENV=$VENV PA_DOMAIN=$PA_DOMAIN ./rebuild.sh
+REMOTE
