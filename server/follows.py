@@ -16,6 +16,8 @@ ns = Namespace('follows', path='/')
 
 MESSAGE = 'Message'
 FOLLOW_EP = '/users/<string:username>/follow'
+FOLLOWERS_EP = '/users/<string:username>/followers'
+FOLLOWING_EP = '/users/<string:username>/following'
 FOLLOWS_COLLECT = 'follows'
 FOLLOWER = 'follower'
 FOLLOWEE = 'followee'
@@ -26,6 +28,12 @@ USER_NOT_FOUND = 'User not found'
 
 def _user_exists(username):
     return dbc.read_one(USERS, {USERNAME: username}) is not None
+
+
+def _usernames(field, filt):
+    """Return the sorted usernames stored in field of matching follows."""
+    docs = dbc.read(FOLLOWS_COLLECT, filt=filt, projection={field: 1})
+    return sorted(doc[field] for doc in docs)
 
 
 @ns.route(FOLLOW_EP)
@@ -53,3 +61,25 @@ class Follow(Resource):
         dbc.delete(FOLLOWS_COLLECT,
                    {FOLLOWER: g.current_user, FOLLOWEE: username})
         return {MESSAGE: f'Unfollowed {username}'}
+
+
+@ns.route(FOLLOWERS_EP)
+class Followers(Resource):
+    method_decorators = [login_required]
+
+    def get(self, username):
+        """List the users who follow a user."""
+        if not _user_exists(username):
+            return {MESSAGE: USER_NOT_FOUND}, HTTPStatus.NOT_FOUND
+        return {'followers': _usernames(FOLLOWER, {FOLLOWEE: username})}
+
+
+@ns.route(FOLLOWING_EP)
+class Following(Resource):
+    method_decorators = [login_required]
+
+    def get(self, username):
+        """List the users a user follows."""
+        if not _user_exists(username):
+            return {MESSAGE: USER_NOT_FOUND}, HTTPStatus.NOT_FOUND
+        return {'following': _usernames(FOLLOWEE, {FOLLOWER: username})}

@@ -177,3 +177,4 @@ def initialize_indexes():
         'restaurants', [('neighborhood.code', 1), ('rating', 1)])
     create_index(
         'follows', [('follower', 1), ('followee', 1)], unique=True)
+    create_index('follows', [('followee', 1)])

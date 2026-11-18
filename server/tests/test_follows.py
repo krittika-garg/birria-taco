@@ -10,6 +10,8 @@ from server.endpoints import app
 
 TEST_JWT_SECRET = 'test-only-secret-key-at-least-32-characters'
 FOLLOW_URL = '/users/{}/follow'
+FOLLOWERS_URL = '/users/{}/followers'
+FOLLOWING_URL = '/users/{}/following'
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +53,12 @@ def follows(monkeypatch):
                 return 1
         return 0
 
+    def read(collection, filt=None, projection=None):
+        assert collection == fl.FOLLOWS_COLLECT
+        return [{k: doc[k] for k in projection}
+                for doc in docs if matches(doc, filt)]
+
+    monkeypatch.setattr(dbc, 'read', read)
     monkeypatch.setattr(dbc, 'read_one', read_one)
     monkeypatch.setattr(dbc, 'update_raw', update_raw)
     monkeypatch.setattr(dbc, 'delete', delete)
@@ -121,3 +129,54 @@ def test_unfollow_when_not_following_is_fine(follows):
     response = client_for('alice').delete(FOLLOW_URL.format('bob'))
     assert response.status_code == 200
     assert follows == []
+
+
+@pytest.mark.parametrize('url', [FOLLOWERS_URL, FOLLOWING_URL])
+def test_lists_require_login(url):
+    assert app.test_client().get(url.format('bob')).status_code == 401
+
+
+@pytest.mark.parametrize('url', [FOLLOWERS_URL, FOLLOWING_URL])
+def test_lists_404_for_unknown_user(follows, url):
+    response = client_for('alice').get(url.format('nobody'))
+    assert response.status_code == 404
+
+
+def test_lists_are_empty_without_follows(follows):
+    alice = client_for('alice')
+    assert alice.get(FOLLOWERS_URL.format('bob')).get_json() == {
+        'followers': []}
+    assert alice.get(FOLLOWING_URL.format('bob')).get_json() == {
+        'following': []}
+
+
+def test_followers_are_sorted(follows):
+    client_for('cara').post(FOLLOW_URL.format('bob'))
+    client_for('alice').post(FOLLOW_URL.format('bob'))
+
+    response = client_for('bob').get(FOLLOWERS_URL.format('bob'))
+
+    assert response.status_code == 200
+    assert response.get_json() == {'followers': ['alice', 'cara']}
+
+
+def test_following_is_sorted(follows):
+    alice = client_for('alice')
+    alice.post(FOLLOW_URL.format('cara'))
+    alice.post(FOLLOW_URL.format('bob'))
+
+    response = client_for('bob').get(FOLLOWING_URL.format('alice'))
+
+    assert response.status_code == 200
+    assert response.get_json() == {'following': ['bob', 'cara']}
+
+
+def test_unfollow_updates_both_lists(follows):
+    alice = client_for('alice')
+    alice.post(FOLLOW_URL.format('bob'))
+    alice.delete(FOLLOW_URL.format('bob'))
+
+    assert alice.get(FOLLOWERS_URL.format('bob')).get_json() == {
+        'followers': []}
+    assert alice.get(FOLLOWING_URL.format('alice')).get_json() == {
+        'following': []}

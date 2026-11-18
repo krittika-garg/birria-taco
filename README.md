@@ -183,3 +183,9 @@ All follow endpoints need an access token.
   harmless. It returns `400` for yourself and `404` for an unknown user.
 - `DELETE /users/<username>/follow` unfollows a user. Unfollowing someone you
   don't follow is harmless.
+- `GET /users/<username>/followers` returns `{"followers": [...]}`, the sorted
+  usernames following that user.
+- `GET /users/<username>/following` returns `{"following": [...]}`, the sorted
+  usernames that user follows.
+
+Both lists return `404` for an unknown user.
