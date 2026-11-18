@@ -523,3 +523,26 @@ def test_nearby_not_routed_as_resid(read_one, read, connect):
     adapter = app.url_map.bind('localhost')
     endpoint, _ = adapter.match(rest.RESTAURANTS_NEARBY_EP)
     assert endpoint == 'restaurants_restaurants_nearby'
+
+
+@pytest.mark.parametrize('cuisine,expected', [
+    (' Mexican ', ['Tacos']),
+    ('', ['Tacos', 'Sushi']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_cuisine_filter(read, cuisine, expected):
+    read.return_value = [
+        {'name': 'Sushi', 'cuisine': 'Japanese', 'rating': None},
+        {'name': 'Tacos', 'cuisine': 'Mexican', 'rating': 7},
+    ]
+    client = app.test_client()
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    response = client.get(
+        '/restaurants',
+        query_string={'cuisine': cuisine, 'user': 'someone-else'},
+        headers={'Authorization': f'Bearer {token}'})
+    assert response.status_code == 200
+    names = [r['name'] for r in response.get_json()['restaurants']]
+    assert names == expected
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})

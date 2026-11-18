@@ -9,6 +9,7 @@ import pymongo as pm
 
 LOCAL = "0"
 CLOUD = "1"
+LOCAL_URI_DEFAULT = 'mongodb://localhost:27017/'
 
 SE_DB = 'seDB'
 
@@ -36,8 +37,10 @@ def connect_db():
             print('Connecting to Mongo in the cloud.')
             client = pm.MongoClient(uri)
         else:
-            print("Connecting to Mongo locally.")
-            client = pm.MongoClient()
+            uri = os.environ.get('MONGO_LOCAL_URI', LOCAL_URI_DEFAULT)
+            # Anything before the last @ is credentials: don't log those.
+            print(f"Connecting to Mongo locally at {uri.rsplit('@', 1)[-1]}")
+            client = pm.MongoClient(uri)
     return client
 
 
@@ -92,6 +95,16 @@ def update(collection, filters, update_dict, db=SE_DB):
 
 
 @needs_connection
+def update_raw(collection, filters, update_doc, db=SE_DB, upsert=False):
+    """
+    Update one doc with a full update document, for operators beyond
+    $set (e.g. {'$push': ..., '$inc': ...}).
+    """
+    return client[db][collection].update_one(
+        filters, update_doc, upsert=upsert)
+
+
+@needs_connection
 def upsert(collection, filters, update_dict, db=SE_DB):
     """
     Update a matching document, or insert it if none exists.
@@ -113,12 +126,17 @@ def create_index(collection, keys, db=SE_DB, **kwargs):
 
 
 @needs_connection
-def read(collection, db=SE_DB, no_id=True, filt=None) -> list:
+def read(collection, db=SE_DB, no_id=True, filt=None,
+         projection=None) -> list:
     """
     Returns a list from the db, optionally restricted by a filter.
+    A projection (e.g. {'boundary': 0}) limits which fields come back.
     """
+    coll = client[db][collection]
+    cursor = (coll.find(filt or {}, projection) if projection
+              else coll.find(filt or {}))
     ret = []
-    for doc in client[db][collection].find(filt or {}):
+    for doc in cursor:
         if no_id:
             del doc[MONGO_ID]
         else:
@@ -143,3 +161,17 @@ def fetch_all_as_dict(key, collection, db=SE_DB):
         del doc[MONGO_ID]
         ret[doc[key]] = doc
     return ret
+
+
+def initialize_indexes():
+    """Create application indexes during startup."""
+    create_index('users', [('username', 1)], unique=True)
+    create_index('refresh_tokens', [('token_hash', 1)], unique=True)
+    create_index(
+        'refresh_tokens', [('expires_at', 1)], expireAfterSeconds=0)
+    create_index(
+        'groups', [('expires_at', 1)], expireAfterSeconds=0)
+    create_index(
+        'rank_sessions', [('expires_at', 1)], expireAfterSeconds=0)
+    create_index(
+        'restaurants', [('neighborhood.code', 1), ('rating', 1)])

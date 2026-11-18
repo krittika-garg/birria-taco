@@ -13,7 +13,6 @@ PASSWORD_HASH = 'password_hash'
 
 def _users():
     users = dbc.connect_db()[dbc.SE_DB][USERS]
-    users.create_index(USERNAME, unique=True)  # no-op once it exists
     return users
 
 

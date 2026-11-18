@@ -48,6 +48,7 @@ def fresh_connection(monkeypatch):
     monkeypatch.setattr(dbc, "client", None)
     monkeypatch.delenv("CLOUD_MONGO", raising=False)
     monkeypatch.delenv("MONGO_URI", raising=False)
+    monkeypatch.delenv("MONGO_LOCAL_URI", raising=False)
 
 
 @pytest.fixture
@@ -64,9 +65,21 @@ def fake_collection(monkeypatch):
 @patch("data.db_connect.pm.MongoClient")
 def test_connect_db_local(mock_client, fresh_connection):
     client = dbc.connect_db()
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
     assert client is mock_client.return_value
     assert dbc.client is client
+
+
+@patch("data.db_connect.pm.MongoClient")
+def test_connect_db_local_uri_override(mock_client, fresh_connection,
+                                       monkeypatch, capsys):
+    uri = "mongodb://user:hunter2@otherhost:27018/"
+    monkeypatch.setenv("MONGO_LOCAL_URI", uri)
+    dbc.connect_db()
+    mock_client.assert_called_once_with(uri)
+    output = capsys.readouterr().out
+    assert "otherhost:27018" in output
+    assert "hunter2" not in output
 
 
 @patch("data.db_connect.pm.MongoClient")
@@ -110,6 +123,16 @@ def test_read_keeps_ids_as_strings(fake_collection):
     fake_collection.find.assert_called_once_with({"name": "x"})
 
 
+def test_read_passes_projection_and_drops_id(fake_collection):
+    fake_collection.find.return_value = [
+        {dbc.MONGO_ID: ObjectId(), "name": "x"}]
+    docs = dbc.read("places", filt={"name": "x"},
+                    projection={"boundary": 0})
+    assert docs == [{"name": "x"}]
+    fake_collection.find.assert_called_once_with(
+        {"name": "x"}, {"boundary": 0})
+
+
 def test_read_one_returns_none_when_missing(fake_collection):
     fake_collection.find.return_value = []
     assert dbc.read_one("restaurants", {"name": "nowhere"}) is None
@@ -127,6 +150,13 @@ def test_upsert_sets_fields_and_inserts_if_missing(fake_collection):
     dbc.upsert("states", {"Abbrev": "NY"}, {"State": "New York"})
     fake_collection.update_one.assert_called_once_with(
         {"Abbrev": "NY"}, {"$set": {"State": "New York"}}, upsert=True)
+
+
+def test_update_raw_passes_operators_through(fake_collection):
+    update_doc = {"$push": {"ordered": "x"}, "$inc": {"version": 1}}
+    dbc.update_raw("rankings", {"_id": "bob"}, update_doc, upsert=True)
+    fake_collection.update_one.assert_called_once_with(
+        {"_id": "bob"}, update_doc, upsert=True)
 
 
 def test_delete_returns_count(fake_collection):
@@ -232,10 +262,29 @@ def test_needs_connection_preserves_metadata():
 def test_helpers_reuse_one_connection(mock_client, fresh_connection):
     dbc.read('restaurants')
     dbc.read('restaurants')
-    mock_client.assert_called_once_with()
+    mock_client.assert_called_once_with(dbc.LOCAL_URI_DEFAULT)
 
 
 @pytest.mark.parametrize('name', DECORATED_HELPERS)
 def test_db_helpers_are_decorated(name):
     assert hasattr(getattr(dbc, name), '__wrapped__'), (
         f'{name} must use @needs_connection')
+
+
+def test_initialize_indexes(monkeypatch):
+    from unittest.mock import Mock, call
+    import data.db_connect as dbc
+
+    create_index = Mock()
+    monkeypatch.setattr(dbc, 'create_index', create_index)
+
+    dbc.initialize_indexes()
+
+    assert create_index.call_args_list == [
+        call('users', [('username', 1)], unique=True),
+        call('refresh_tokens', [('token_hash', 1)], unique=True),
+        call('refresh_tokens', [('expires_at', 1)], expireAfterSeconds=0),
+        call('groups', [('expires_at', 1)], expireAfterSeconds=0),
+        call('rank_sessions', [('expires_at', 1)], expireAfterSeconds=0),
+        call('restaurants', [('neighborhood.code', 1), ('rating', 1)]),
+    ]

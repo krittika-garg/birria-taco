@@ -41,6 +41,20 @@ The API will be available at http://127.0.0.1:8000. Opening that URL in a browse
 shows a Swagger page for trying the endpoints. To call one that needs a login,
 click **Authorize** and enter `Bearer YOUR_ACCESS_TOKEN`.
 
+### Use MongoDB locally
+Start MongoDB in Docker (needs Docker Desktop with WSL integration turned on), or
+install MongoDB Community and run `mongod` instead:
+~~~
+make mongo
+~~~
+With the virtualenv active, load the states and NYC neighborhoods:
+~~~
+make seed
+~~~
+`./local.sh` then uses local Mongo by default. To use the cloud instead, set
+`CLOUD_MONGO=1` and `MONGO_URI` in `.env`. For a non-default host or port, set
+`MONGO_LOCAL_URI`.
+
 ### Where endpoints live
 Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,
 `states.py`, `neighborhoods.py`, ...) with its own Flask-RESTX `Namespace`, and
@@ -112,8 +126,51 @@ status are also treated as visited. Unknown statuses and ratings on
 want-to-try entries return `400`. Want-to-try entries remain unrated and
 are excluded by `min_rating`, including `min_rating=0`.
 
+## Ranking a restaurant
+
+Ranking places one of your saved restaurants into your list by asking
+"which was better?" a few times (a binary search, so about log2 of the
+bucket's size). Your list is ordered best first: `liked`, then `fine`,
+then `disliked`. Both endpoints need the Bearer token.
+
+- `POST /rank-sessions` with `{"restaurant_id": "...", "bucket": "liked"}`
+  starts a session and returns `201`. If that bucket is empty the place is
+  saved straight away: `{"done": true, "position": 0}`. Otherwise the response
+  is `{"done": false, "session_id": "...", "compare": {restaurant}}`.
+  Unknown or another user's restaurant returns `404`; one already in your
+  list returns `409`.
+- `POST /rank-sessions/<session_id>/answer` with `{"answer": "better"}`
+  says whether the new place is `better` or `worse` than `compare`, or
+  `same` to put it right there. Returns the next `compare`, or
+  `{"done": true, "position": n}` once it is saved (`n` counts from 0 across
+  the whole list). Sessions expire after 15 minutes (`404`).
+- `GET /rankings` returns `{"rankings": [...]}`, your list best first. Each
+  entry has `restaurant_id`, `bucket`, `ranked_at` and a 0-10 `score`.
+
+A place's `score` comes from its position: each bucket spreads its places
+evenly over a band (`liked` 6.7-10, `fine` 3.4-6.6, `disliked` 0-3.3), best
+first, so scores shift as you rank more places. It is separate from the
+manual `rating` on `/restaurants`, which you set yourself.
+
+Every `better`/`worse` answer is also stored in `comparisons` for the city
+leaderboard. Not yet: re-ranking a place already in your list.
+
 `GET`, `PUT`, and `DELETE` on `/restaurants/<id>` return `404` for an `id`
 that doesn't exist or belongs to another user. Ownership comes from the verified JWT; a supplied `user`
 field cannot change it. Each saved entry is personal, and repeated entries
 are allowed. Comparison-based ranking and a shared restaurant catalog are not implemented
 yet.
+
+## Group mode
+
+Groups let friends decide where to eat together. A group lasts 2 hours.
+All group endpoints need an access token.
+
+- `POST /groups` starts a group with you as host and only member, and returns
+  `201` with `{"group": {...}}`. Share its `invite_token` with friends.
+- `POST /groups/join/<invite_token>` adds you to the group and returns
+  `{"group": {...}}`. Joining twice is harmless.
+- `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
+
+All three return `404` for an expired group or a bad token, and `GET` also
+returns `404` to non-members. Voting and live updates are not implemented yet.

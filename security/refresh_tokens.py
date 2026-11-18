@@ -26,8 +26,6 @@ COLLECTION = 'refresh_tokens'
 
 def _collection():
     collection = dbc.connect_db()[dbc.SE_DB][COLLECTION]
-    collection.create_index('token_hash', unique=True)
-    collection.create_index('expires_at', expireAfterSeconds=0)
     return collection
 
 
