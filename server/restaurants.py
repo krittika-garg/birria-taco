@@ -250,4 +250,9 @@ class Restaurant(Resource):
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
         if not deleted:
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        # Imported here, not at the top: server.rankings imports this
+        # module at load time, so a top-level import would be circular.
+        from server.rankings import forget_restaurant
+
+        forget_restaurant(username, str(obj_id))
         return {MESSAGE: 'deleted'}
