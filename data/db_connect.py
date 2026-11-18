@@ -175,3 +175,5 @@ def initialize_indexes():
         'rank_sessions', [('expires_at', 1)], expireAfterSeconds=0)
     create_index(
         'restaurants', [('neighborhood.code', 1), ('rating', 1)])
+    create_index(
+        'follows', [('follower', 1), ('followee', 1)], unique=True)

@@ -174,3 +174,12 @@ All group endpoints need an access token.
 
 All three return `404` for an expired group or a bad token, and `GET` also
 returns `404` to non-members. Voting and live updates are not implemented yet.
+
+## Following users
+
+All follow endpoints need an access token.
+
+- `POST /users/<username>/follow` follows a user. Following someone twice is
+  harmless. It returns `400` for yourself and `404` for an unknown user.
+- `DELETE /users/<username>/follow` unfollows a user. Unfollowing someone you
+  don't follow is harmless.
