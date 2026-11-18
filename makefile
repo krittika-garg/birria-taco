@@ -6,6 +6,7 @@ DB_DIR = data
 SEC_DIR = security
 STATES_DIR = states
 PLACES_DIR = places
+E2E_DIR = integration
 REQ_DIR = .
 
 FORCE:
@@ -22,6 +23,11 @@ all_tests: FORCE
 	cd $(SEC_DIR); make tests
 	cd $(STATES_DIR); make tests
 	cd $(PLACES_DIR); make tests
+	cd $(E2E_DIR); make tests
+
+# End-to-end tests only; they need MongoDB running (make mongo).
+e2e_tests: FORCE
+	cd $(E2E_DIR); make tests
 
 dev_env: FORCE
 	pip install -r $(REQ_DIR)/requirements-dev.txt
