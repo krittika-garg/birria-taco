@@ -1,0 +1,6 @@
+* text=auto
+# Bash can't run scripts with Windows line endings (e.g. in WSL).
+*.sh text eol=lf
+makefile text eol=lf
+*.mk text eol=lf
+.env.example text eol=lf
