@@ -6,8 +6,9 @@ echo "Importing from common.sh"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# MONGO_URI lives in the gitignored .env at the project root:
-if [ -f "$PROJ_ROOT/.env" ]; then set -a; . "$PROJ_ROOT/.env"; set +a; fi
+# MONGO_URI lives in the gitignored .env at the project root. A MONGO_URI
+# already in the environment wins, so you can point a run elsewhere.
+if [ -z "$MONGO_URI" ] && [ -f "$PROJ_ROOT/.env" ]; then set -a; . "$PROJ_ROOT/.env"; set +a; fi
 
 DB=seDB
 if [ -z "$DATA_DIR" ]
@@ -15,8 +16,8 @@ then
     DATA_DIR=$SCRIPT_DIR
 fi
 BKUP_DIR=$DATA_DIR/bkup
-EXP=$(command -v mongoexport)
-IMP=$(command -v mongoimport)
+DUMP=$(command -v mongodump)
+RESTORE=$(command -v mongorestore)
 
 if [ -z "$MONGO_URI" ]
 then
@@ -24,10 +25,9 @@ then
     exit 1
 fi
 
-if [ -z "$EXP" ] || [ -z "$IMP" ]
+if [ -z "$DUMP" ] || [ -z "$RESTORE" ]
 then
-    echo "mongoexport/mongoimport not found; install the MongoDB Database Tools."
+    echo "mongodump/mongorestore not found; install the MongoDB Database Tools."
     exit 1
 fi
 
-declare -a GameCollections=("users")

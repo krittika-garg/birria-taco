@@ -18,19 +18,22 @@ REST API built with Flask-RESTX and MongoDB.
 ## Getting Started
 
 ### Set up the dev environment
+On Windows, run these commands in Git Bash (it comes with Git) or WSL.
 ~~~
-make dev_env
-source venv/bin/activate
+python3 -m venv venv        # Windows: py -m venv venv
+source venv/bin/activate    # Windows Git Bash: source venv/Scripts/activate
+pip install -r requirements-dev.txt
+cp .env.example .env
 ~~~
+Then fill in `JWT_SECRET_KEY` in `.env`; the file shows how to generate one.
+Activate the virtualenv again in each new terminal.
 
-If you get `ModuleNotFoundError: No module named 'server'`, set your PYTHONPATH to the repo root:
-~~~
-export PYTHONPATH=$(pwd)
-~~~
+The `make` targets below work on macOS and WSL. Git Bash has no `make`; install
+it with `winget install ezwinports.make`, or run the plain commands instead.
 
 ### Run the tests
 ~~~
-make all_tests
+make all_tests    # or: pytest
 ~~~
 
 ### Run the server locally
@@ -55,6 +58,13 @@ make seed
 `CLOUD_MONGO=1` and `MONGO_URI` in `.env`. For a non-default host or port, set
 `MONGO_LOCAL_URI`.
 
+### Back up and restore the database
+`data/bkup.sh` saves every collection to `data/bkup/` (gitignored), and
+`data/restore.sh` puts them back, replacing what's there. Both need the
+[MongoDB Database Tools](https://www.mongodb.com/try/download/database-tools)
+and use `MONGO_URI` from `.env`. To target local Mongo instead, run
+`MONGO_URI=mongodb://localhost:27017/ data/bkup.sh`.
+
 ### Where endpoints live
 Each feature has its own module in `server/` (`accounts.py`, `restaurants.py`,
 `states.py`, `neighborhoods.py`, ...) with its own Flask-RESTX `Namespace`, and
@@ -62,10 +72,10 @@ its own test file in `server/tests/`. `server/endpoints.py` only creates the app
 and registers each namespace. Add a new feature as a new module rather than
 growing an existing one.
 
-### Build for production
-~~~
-make prod
-~~~
+### Deploy
+`deploy.sh` deploys to PythonAnywhere by SSHing in and running `rebuild.sh`
+there, which pulls `main` and reloads the site. It needs `PA_USER` and
+`PA_PASSWORD` set.
 
 ## Personal restaurant list
 

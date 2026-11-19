@@ -1,9 +1,6 @@
 #!/bin/bash
-# Script to backup production database to JSON files.
+# Backs up every collection (and its indexes) in the database to data/bkup/.
 
 . "$(dirname "$0")/common.sh"
 
-for collection in "${GameCollections[@]}"; do
-    echo "Backing up $collection"
-    $EXP --uri="$MONGO_URI" --db=$DB --collection=$collection --out=$BKUP_DIR/$collection.json
-done
+"$DUMP" --uri="$MONGO_URI" --db=$DB --out="$BKUP_DIR"

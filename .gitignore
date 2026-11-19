@@ -141,4 +141,7 @@ dmypy.json
 Thumbs.db
 
 # DB backups hold password hashes; never commit them
-data/bkup/*.json
+data/bkup/
+
+# Claude Code worktrees are full repo copies
+.claude/worktrees/
