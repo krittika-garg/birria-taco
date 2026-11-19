@@ -16,13 +16,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.14 matches the team's local virtualenvs.
+        python-version: [ '3.13', '3.14' ]
+
+    name: Tests (Python ${{ matrix.python-version }})
+
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Python 3.13
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python-version }}
           architecture: 'x64'
           cache: 'pip'
           cache-dependency-path: 'requirements*.txt'
@@ -32,21 +40,34 @@ jobs:
 
       - name: Install MongoDB in a Docker container.
         uses: supercharge/mongodb-github-action@1.8.0
+        with:
+          # Same major version as `make mongo`.
+          mongodb-version: '7.0'
 
       - name: Install Python packages.
         run: make dev_env
 
+      - name: Check installed packages are compatible
+        run: pip check
+
+      # COV_MIN fails a step whose coverage drops below it. data has no
+      # minimum while the unused data/manus template code is still there.
       - name: Test server
-        run: cd server && make tests
+        run: cd server && make tests COV_MIN=95
 
       - name: Test data
         run: cd data && make tests
 
       - name: Test security
-        run: cd security && make tests
+        run: cd security && make tests COV_MIN=85
 
       - name: Test states
-        run: cd states && make tests
+        run: cd states && make tests COV_MIN=90
 
       - name: Test places
-        run: cd places && make tests
+        run: cd places && make tests COV_MIN=90
+
+      - name: End-to-end tests against MongoDB
+        env:
+          REQUIRE_MONGO: '1'
+        run: cd integration && make tests

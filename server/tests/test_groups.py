@@ -182,6 +182,11 @@ def test_leave_rejected(db, user, expected):
     assert db[0]['members'] == ['bob']
 
 
+def test_leave_bad_id(db):
+    response = client_for('bob').post('/groups/not-an-id/leave')
+    assert response.status_code == 404
+
+
 def test_leave_requires_login():
     response = app.test_client().post(f'/groups/{ObjectId()}/leave')
     assert response.status_code == 401
