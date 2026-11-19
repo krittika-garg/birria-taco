@@ -337,6 +337,49 @@ def test_answer_after_another_tab_saved(client, db):
     assert db[rk.RANK_SESSIONS_COLLECT] == []
 
 
+def apply_pull_and_inc(db):
+    """Make update_raw apply forget_restaurant's $pull and $inc to db."""
+    def update_raw(collection, filt, update_doc):
+        for doc in db.get(collection, []):
+            if all(doc.get(k) == v for k, v in filt.items()):
+                gone = update_doc['$pull']['ordered']['restaurant_id']
+                doc['ordered'] = [e for e in doc['ordered']
+                                  if e['restaurant_id'] != gone]
+                doc['version'] += update_doc['$inc']['version']
+    dbc.update_raw.side_effect = update_raw
+
+
+def test_deleted_restaurant_leaves_rankings(client, db):
+    a, b = add_restaurant(db, 'A'), add_restaurant(db, 'B')
+    set_ranking(db, [(a, 'liked'), (b, 'fine')])
+    for entry in db[rk.RANKINGS_COLLECT][0]['ordered']:
+        entry['ranked_at'] = datetime(2026, 11, 1)
+    apply_pull_and_inc(db)
+
+    assert client.delete(f'/restaurants/{a}').status_code == 200
+    rankings = client.get(rk.RANKINGS_EP).get_json()['rankings']
+    assert [r['restaurant_id'] for r in rankings] == [b]
+    assert db[rk.RANKINGS_COLLECT][0]['version'] == 2
+
+
+@pytest.mark.parametrize('delete_new', [True, False])
+def test_delete_cancels_open_session(client, db, delete_new):
+    # Deleting the place being ranked, or one it is compared against,
+    # both leave the session's positions stale.
+    session_id = start_session(client, db)
+    new = db[rk.RANK_SESSIONS_COLLECT][0]['restaurant_id']
+    a = db[rk.RANKINGS_COLLECT][0]['ordered'][0]['restaurant_id']
+    apply_pull_and_inc(db)
+
+    gone = new if delete_new else a
+    assert client.delete(f'/restaurants/{gone}').status_code == 200
+    dbc.update_raw.reset_mock()
+    url = rk.RANK_SESSIONS_EP + f'/{session_id}/answer'
+    response = client.post(url, json={'answer': 'better'})
+    assert response.status_code == 409
+    dbc.update_raw.assert_not_called()
+
+
 def test_save_loses_race_with_another_tab(client, db):
     # The version matched when read but changed before the write landed.
     session_id = start_session(client, db)

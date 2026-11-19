@@ -126,7 +126,8 @@ issued keeps working until it expires.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
-  returns `200`.
+  returns `200`. It also leaves your ranked list, and any ranking in
+  progress has to start again (`409`).
 
 To save a place for later, include `"status": "want_to_try"` in the POST
 body, with no rating. After visiting, PUT the restaurant's name, city and
