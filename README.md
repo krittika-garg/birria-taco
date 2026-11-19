@@ -121,6 +121,9 @@ issued keeps working until it expires.
   excluding unrated entries. Blank text filters are ignored; invalid minimum
   ratings return `400`. Example: `/restaurants?q=ramen&cuisine=Japanese&min_rating=8`.
   Filter by `status=want_to_try` or `status=visited`; omit it to return both.
+  `borough` (case-insensitive, e.g. `/restaurants?borough=Brooklyn`) comes from
+  the neighborhood the entry's `lat`/`lon` falls in, so entries without a
+  location never match.
 - `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
   logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
@@ -182,8 +185,11 @@ All group endpoints need an access token.
 - `POST /groups/join/<invite_token>` adds you to the group and returns
   `{"group": {...}}`. Joining twice is harmless.
 - `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
+- `GET /groups` returns `{"groups": [...]}` with the live groups you are a
+  member of, newest first.
 
-All three return `404` for an expired group or a bad token, and `GET` also
+`GET /groups/<id>` and both `POST`s return `404` for an expired group or a bad
+token, and `GET` also
 returns `404` to non-members.
 
 ### Voting

@@ -564,3 +564,30 @@ def test_cuisine_filter(read, cuisine, expected):
     assert names == expected
     read.assert_called_once_with(
         rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})
+
+
+@pytest.mark.parametrize('borough, expected', [
+    (' brooklyn ', ['Tacos']),
+    ('Queens', ['Dumplings']),
+    ('Bronx', []),
+    ('', ['Tacos', 'Dumplings', 'No location', 'Null neighborhood']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_borough_filter(read, borough, expected):
+    read.return_value = [
+        {'name': 'Tacos', 'neighborhood': {'borough': 'Brooklyn'}},
+        {'name': 'Dumplings', 'neighborhood': {'borough': 'Queens'}},
+        {'name': 'No location'},
+        {'name': 'Null neighborhood', 'neighborhood': None},
+    ]
+    client = app.test_client()
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    response = client.get(
+        '/restaurants',
+        query_string={'borough': borough},
+        headers={'Authorization': f'Bearer {token}'})
+    assert response.status_code == 200
+    names = [r['name'] for r in response.get_json()['restaurants']]
+    assert names == expected
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})
