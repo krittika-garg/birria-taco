@@ -84,9 +84,20 @@ def delete(collection: str, filt: dict, db=SE_DB):
     """
     Find with a filter and return on the first doc found.
     """
-    print(f'{filt=}')
     del_result = client[db][collection].delete_one(filt)
     return del_result.deleted_count
+
+
+@needs_connection
+def pop_one(collection, filt, db=SE_DB):
+    """
+    Atomically find and delete the first doc matching filt.
+    Return the deleted doc, or None if nothing matched.
+    """
+    doc = client[db][collection].find_one_and_delete(filt)
+    if doc:
+        convert_mongo_id(doc)
+    return doc
 
 
 @needs_connection
@@ -175,3 +186,6 @@ def initialize_indexes():
         'rank_sessions', [('expires_at', 1)], expireAfterSeconds=0)
     create_index(
         'restaurants', [('neighborhood.code', 1), ('rating', 1)])
+    create_index(
+        'follows', [('follower', 1), ('followee', 1)], unique=True)
+    create_index('follows', [('followee', 1)])

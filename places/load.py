@@ -217,7 +217,6 @@ def main():
     cities_csv = sys.argv[2] if len(sys.argv) > 2 else CITIES_CSV
     places = build_places(read_csv(states_csv), read_csv(cities_csv),
                           read_neighborhoods())
-    dbc.connect_db()
     save_places(places)
     print(f'Imported {len(places)} place records.')
 

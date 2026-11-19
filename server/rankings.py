@@ -126,6 +126,18 @@ def _save(username, resid, bucket, position, pairs, version):
     return {'done': True, 'position': position}
 
 
+def forget_restaurant(username, resid):
+    """
+    Take a deleted restaurant out of username's ranked list. The version
+    bump also cancels any open ranking session, since its positions point
+    into the old list (and it may be ranking the deleted place itself).
+    """
+    dbc.update_raw(
+        RANKINGS_COLLECT, {'_id': username},
+        {'$pull': {'ordered': {'restaurant_id': resid}},
+         '$inc': {'version': 1}})
+
+
 @ns.route(RANKINGS_EP)
 class Rankings(Resource):
     method_decorators = [login_required]

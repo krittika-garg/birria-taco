@@ -43,6 +43,15 @@ def _live(group):
 class Groups(Resource):
     method_decorators = [login_required]
 
+    def get(self):
+        """Return the live groups you are a member of, newest first."""
+        groups = dbc.read(GROUPS_COLLECT, no_id=False,
+                          filt={'members': g.current_user})
+        # The TTL index removes expired groups lazily, so check here too.
+        live = [group for group in map(_live, groups) if group]
+        live.sort(key=lambda group: group['expires_at'], reverse=True)
+        return {'groups': live}
+
     def post(self):
         """
         Start a group with you as host and only member. Share

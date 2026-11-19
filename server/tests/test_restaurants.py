@@ -53,9 +53,10 @@ def test_edit_delete_not_found(delete, update, read_one, connect, resid):
 
 
 @patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.update_raw', autospec=True)
 @patch('data.db_connect.update', autospec=True)
 @patch('data.db_connect.delete', autospec=True)
-def test_edit_delete_success(delete, update, connect):
+def test_edit_delete_success(delete, update, update_raw, connect):
     update.return_value = MagicMock(matched_count=1)
     delete.return_value = 1
     client = app.test_client()
@@ -72,6 +73,23 @@ def test_edit_delete_success(delete, update, connect):
         'neighborhood': None, 'status': 'visited'}
 
     assert client.delete(url).status_code == 200
+    # The deleted place also leaves the user's ranked list.
+    update_raw.assert_called_once_with(
+        'rankings', {'_id': 'bob'},
+        {'$pull': {'ordered': {'restaurant_id': A_RESID}},
+         '$inc': {'version': 1}})
+
+
+@pytest.mark.parametrize('resid', [A_RESID, 'not-an-object-id'])
+@patch('data.db_connect.connect_db', autospec=True)
+@patch('data.db_connect.update_raw', autospec=True)
+@patch('data.db_connect.delete', return_value=0, autospec=True)
+def test_delete_not_found_leaves_rankings(delete, update_raw, connect,
+                                          resid):
+    client = _authed_client()
+    response = client.delete(rest.RESTAURANTS_EP + f'/{resid}')
+    assert response.status_code == 404
+    update_raw.assert_not_called()
 
 
 @pytest.mark.parametrize('payload', [
@@ -540,6 +558,33 @@ def test_cuisine_filter(read, cuisine, expected):
     response = client.get(
         '/restaurants',
         query_string={'cuisine': cuisine, 'user': 'someone-else'},
+        headers={'Authorization': f'Bearer {token}'})
+    assert response.status_code == 200
+    names = [r['name'] for r in response.get_json()['restaurants']]
+    assert names == expected
+    read.assert_called_once_with(
+        rest.RESTAURANTS_COLLECT, no_id=False, filt={'user': 'bob'})
+
+
+@pytest.mark.parametrize('borough, expected', [
+    (' brooklyn ', ['Tacos']),
+    ('Queens', ['Dumplings']),
+    ('Bronx', []),
+    ('', ['Tacos', 'Dumplings', 'No location', 'Null neighborhood']),
+])
+@patch('data.db_connect.read', autospec=True)
+def test_borough_filter(read, borough, expected):
+    read.return_value = [
+        {'name': 'Tacos', 'neighborhood': {'borough': 'Brooklyn'}},
+        {'name': 'Dumplings', 'neighborhood': {'borough': 'Queens'}},
+        {'name': 'No location'},
+        {'name': 'Null neighborhood', 'neighborhood': None},
+    ]
+    client = app.test_client()
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    response = client.get(
+        '/restaurants',
+        query_string={'borough': borough},
         headers={'Authorization': f'Bearer {token}'})
     assert response.status_code == 200
     names = [r['name'] for r in response.get_json()['restaurants']]

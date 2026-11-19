@@ -90,6 +90,12 @@ def _tag_neighborhood(restaurant):
         key: found.get(key) for key in ('name', 'borough', 'code')}
 
 
+def _borough_of(restaurant):
+    """Return the borough a restaurant was tagged with, or ''."""
+    neighborhood = restaurant.get('neighborhood') or {}
+    return neighborhood.get('borough') or ''
+
+
 @ns.route(RESTAURANTS_EP)
 class Restaurants(Resource):
     method_decorators = [login_required]
@@ -97,6 +103,7 @@ class Restaurants(Resource):
     @ns.doc(params={
         'q': 'Case-insensitive text contained in the restaurant name',
         'cuisine': 'Case-insensitive exact cuisine',
+        'borough': 'Case-insensitive exact borough',
         'min_rating': 'Minimum rating, from 0 to 10 (inclusive)',
         'status': 'visited or want_to_try; omitted returns both',
     })
@@ -104,6 +111,7 @@ class Restaurants(Resource):
         """Return the logged-in user's saved restaurants."""
         query = request.args.get('q', '').strip().casefold()
         cuisine = request.args.get('cuisine', '').strip().casefold()
+        borough = request.args.get('borough', '').strip().casefold()
         status = request.args.get('status')
         if status is not None and status not in STATUSES:
             return {MESSAGE: STATUS_ERROR}, HTTPStatus.BAD_REQUEST
@@ -126,6 +134,8 @@ class Restaurants(Resource):
                        and (status is None or r['status'] == status)
                        and (not cuisine or
                             cuisine == r.get('cuisine', '').casefold())
+                       and (not borough or
+                            borough == _borough_of(r).casefold())
                        and (min_rating is None or
                             (r.get('rating') is not None and
                              r['rating'] >= min_rating))]
@@ -250,4 +260,9 @@ class Restaurant(Resource):
             RESTAURANTS_COLLECT, {'_id': obj_id, 'user': username})
         if not deleted:
             return {MESSAGE: 'Restaurant not found'}, HTTPStatus.NOT_FOUND
+        # Imported here, not at the top: server.rankings imports this
+        # module at load time, so a top-level import would be circular.
+        from server.rankings import forget_restaurant
+
+        forget_restaurant(username, str(obj_id))
         return {MESSAGE: 'deleted'}

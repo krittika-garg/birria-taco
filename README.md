@@ -121,12 +121,16 @@ issued keeps working until it expires.
   excluding unrated entries. Blank text filters are ignored; invalid minimum
   ratings return `400`. Example: `/restaurants?q=ramen&cuisine=Japanese&min_rating=8`.
   Filter by `status=want_to_try` or `status=visited`; omit it to return both.
+  `borough` (case-insensitive, e.g. `/restaurants?borough=Brooklyn`) comes from
+  the neighborhood the entry's `lat`/`lon` falls in, so entries without a
+  location never match.
 - `GET /restaurants/<id>` returns `{"restaurant": {...}}` for one of the
   logged-in user's entries.
 - `PUT /restaurants/<id>` updates one of the logged-in user's entries using
   the same validation as `POST`, and returns `200` with `{"restaurant": {...}}`.
 - `DELETE /restaurants/<id>` removes one of the logged-in user's entries and
-  returns `200`.
+  returns `200`. It also leaves your ranked list, and any ranking in
+  progress has to start again (`409`).
 
 To save a place for later, include `"status": "want_to_try"` in the POST
 body, with no rating. After visiting, PUT the restaurant's name, city and
@@ -181,6 +185,42 @@ All group endpoints need an access token.
 - `POST /groups/join/<invite_token>` adds you to the group and returns
   `{"group": {...}}`. Joining twice is harmless.
 - `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
+- `GET /groups` returns `{"groups": [...]}` with the live groups you are a
+  member of, newest first.
 
-All three return `404` for an expired group or a bad token, and `GET` also
-returns `404` to non-members. Voting and live updates are not implemented yet.
+`GET /groups/<id>` and both `POST`s return `404` for an expired group or a bad
+token, and `GET` also
+returns `404` to non-members.
+
+### Voting
+
+Each member gets one vote, for any restaurant that someone in the group has
+saved. Votes go away when the group expires. Both endpoints return `404` to
+non-members and for expired groups.
+
+- `PUT /groups/<id>/vote` with `{"restaurant_id": "..."}` casts your vote, or
+  replaces your earlier vote, and returns `{"vote": {"restaurant_id": "..."}}`.
+  It returns `400` without a `restaurant_id`, and `404` if no member has saved
+  that restaurant.
+- `GET /groups/<id>/votes` returns
+  `{"tally": [{"restaurant_id", "name", "votes"}], "my_vote", "voted", "members"}`,
+  with the most votes first and ties sorted by name. It doesn't show who voted
+  for what. Votes from people who left the group, and votes for restaurants
+  that have since been deleted, are not counted.
+
+Live updates are not implemented yet.
+
+## Following users
+
+All follow endpoints need an access token.
+
+- `POST /users/<username>/follow` follows a user. Following someone twice is
+  harmless. It returns `400` for yourself and `404` for an unknown user.
+- `DELETE /users/<username>/follow` unfollows a user. Unfollowing someone you
+  don't follow is harmless.
+- `GET /users/<username>/followers` returns `{"followers": [...]}`, the sorted
+  usernames following that user.
+- `GET /users/<username>/following` returns `{"following": [...]}`, the sorted
+  usernames that user follows.
+
+Both lists return `404` for an unknown user.
