@@ -184,4 +184,22 @@ All group endpoints need an access token.
 - `GET /groups/<id>` returns `{"group": {...}}` if you are a member.
 
 All three return `404` for an expired group or a bad token, and `GET` also
-returns `404` to non-members. Voting and live updates are not implemented yet.
+returns `404` to non-members.
+
+### Voting
+
+Each member gets one vote, for any restaurant that someone in the group has
+saved. Votes go away when the group expires. Both endpoints return `404` to
+non-members and for expired groups.
+
+- `PUT /groups/<id>/vote` with `{"restaurant_id": "..."}` casts your vote, or
+  replaces your earlier vote, and returns `{"vote": {"restaurant_id": "..."}}`.
+  It returns `400` without a `restaurant_id`, and `404` if no member has saved
+  that restaurant.
+- `GET /groups/<id>/votes` returns
+  `{"tally": [{"restaurant_id", "name", "votes"}], "my_vote", "voted", "members"}`,
+  with the most votes first and ties sorted by name. It doesn't show who voted
+  for what. Votes from people who left the group, and votes for restaurants
+  that have since been deleted, are not counted.
+
+Live updates are not implemented yet.
