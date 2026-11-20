@@ -36,6 +36,11 @@ def _usernames(field, filt):
     return sorted(doc[field] for doc in docs)
 
 
+def following_usernames(username):
+    """Return the usernames that username follows."""
+    return _usernames(FOLLOWEE, {FOLLOWER: username})
+
+
 @ns.route(FOLLOW_EP)
 class Follow(Resource):
     method_decorators = [login_required]
@@ -82,4 +87,4 @@ class Following(Resource):
         """List the users a user follows."""
         if not _user_exists(username):
             return {MESSAGE: USER_NOT_FOUND}, HTTPStatus.NOT_FOUND
-        return {'following': _usernames(FOLLOWEE, {FOLLOWER: username})}
+        return {'following': following_usernames(username)}
