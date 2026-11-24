@@ -15,7 +15,13 @@ import data.db_connect as dbc
 from places.load import geo_point
 from security.jwt_auth import login_required
 from server.groups import GROUP_NOT_FOUND, GROUPS_COLLECT, _live
-from server.neighborhoods import LAT_LON_BODY_NUMERIC_ERROR, lat_lon_error
+from server.neighborhoods import (
+    LAT_LON_BODY_NUMERIC_ERROR, collapse_whitespace, lat_lon_error,
+    name_order, parse_limit,
+)
+from server.restaurants import (
+    EARTH_RADIUS_KM, RESTAURANTS_COLLECT, _parse_radius_km,
+)
 from server.states import haversine_km
 
 ns = Namespace('meetup', path='/')
@@ -23,6 +29,7 @@ ns = Namespace('meetup', path='/')
 MESSAGE = 'Message'
 LOCATION_EP = '/groups/<string:group_id>/location'
 MIDPOINT_EP = '/groups/<string:group_id>/midpoint'
+SUGGESTIONS_EP = '/groups/<string:group_id>/suggestions'
 
 NO_LOCATIONS = 'No member has shared a location yet'
 
@@ -118,6 +125,21 @@ def _member_group(group_id):
     return group and _live(group)
 
 
+def member_points(group):
+    """
+    Return {user: (lat, lon)}: the latest shared location of each current
+    member of group. People who left the group are ignored.
+    """
+    members = set(group['members'])
+    # Keyed by user, last entry wins, in case two PUTs interleaved.
+    by_user = {}
+    for entry in group.get('locations', []):
+        if entry.get('user') in members:
+            lon, lat = entry['location']['coordinates']
+            by_user[entry['user']] = (lat, lon)
+    return by_user
+
+
 def _parse_location(data):
     """
     Validate {lat, lon} from a JSON body.
@@ -171,13 +193,7 @@ class GroupMidpoint(Resource):
         group = _member_group(group_id)
         if not group:
             return {MESSAGE: GROUP_NOT_FOUND}, HTTPStatus.NOT_FOUND
-        members = set(group['members'])
-        # Keyed by user, last entry wins, in case two PUTs interleaved.
-        by_user = {}
-        for entry in group.get('locations', []):
-            if entry.get('user') in members:
-                lon, lat = entry['location']['coordinates']
-                by_user[entry['user']] = (lat, lon)
+        by_user = member_points(group)
         if not by_user:
             return {MESSAGE: NO_LOCATIONS}, HTTPStatus.NOT_FOUND
 
@@ -190,4 +206,79 @@ class GroupMidpoint(Resource):
             'located': len(by_user),
             'members': len(group['members']),
             'max_km': round(max_km, 2),
+        }
+
+
+def _place_key(restaurant):
+    """Identify a place: its name (ignoring case and spacing) + area."""
+    neighborhood = restaurant.get('neighborhood') or {}
+    return (collapse_whitespace(restaurant['name']).casefold(),
+            neighborhood.get('code'))
+
+
+def _suggestion(entries, lat, lon):
+    """Combine every member's entry for one place into one suggestion."""
+    ratings = [e['rating'] for e in entries if e.get('rating') is not None]
+    rating = round(sum(ratings) / len(ratings), 2) if ratings else None
+    distances = [
+        haversine_km(lat, lon, *reversed(e['location']['coordinates']))
+        for e in entries]
+    # Prefer the best-rated entry (any entry when none is rated).
+    best = max(entries, key=lambda e: -1 if e.get('rating') is None
+               else e['rating'])
+    return {
+        'restaurant_id': str(best['_id']),
+        'name': min((collapse_whitespace(e['name']) for e in entries),
+                    key=name_order),
+        'rating': rating,
+        'saved_by': len({e['user'] for e in entries}),
+        'distance_km': round(min(distances), 2),
+    }
+
+
+def _suggestion_order(suggestion):
+    rating = suggestion['rating']
+    return (rating is None, -(rating or 0), -suggestion['saved_by'],
+            suggestion['distance_km'], name_order(suggestion['name']))
+
+
+@ns.route(SUGGESTIONS_EP)
+class GroupSuggestions(Resource):
+    method_decorators = [login_required]
+
+    def get(self, group_id):
+        """
+        Suggest restaurants near the group's fair midpoint, best rated by
+        its members first. Optional radius_km (default 2) and limit
+        (1-50, default 10).
+        """
+        group = _member_group(group_id)
+        if not group:
+            return {MESSAGE: GROUP_NOT_FOUND}, HTTPStatus.NOT_FOUND
+        points = member_points(group)
+        if not points:
+            return {MESSAGE: NO_LOCATIONS}, HTTPStatus.NOT_FOUND
+        radius_km, error = _parse_radius_km()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+        limit, error = parse_limit()
+        if error:
+            return {MESSAGE: error}, HTTPStatus.BAD_REQUEST
+
+        lat, lon = fair_midpoint(list(points.values()))
+        restaurants = dbc.read(RESTAURANTS_COLLECT, no_id=False, filt={
+            'user': {'$in': group['members']},
+            'location': {'$geoWithin': {'$centerSphere': [
+                [lon, lat], radius_km / EARTH_RADIUS_KM]}},
+        })
+        places = {}
+        for restaurant in restaurants:
+            places.setdefault(_place_key(restaurant), []).append(restaurant)
+        suggestions = sorted(
+            (_suggestion(entries, lat, lon) for entries in places.values()),
+            key=_suggestion_order)
+        return {
+            'midpoint': {'lat': round(lat, 6), 'lon': round(lon, 6)},
+            'radius_km': radius_km,
+            'suggestions': suggestions[:limit],
         }
