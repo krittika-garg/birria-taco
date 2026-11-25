@@ -88,15 +88,14 @@ def anon(db):
 @pytest.fixture
 def login(db):
     """
-    Return login(username): registers the user through /register, logs
-    in through /login, and returns a client sending that access token.
+    Return login(username): registers the user through /register, which
+    also logs them in, and returns a client sending that access token.
     """
     def _login(username):
         client = app.test_client()
         creds = {'username': username, 'password': PASSWORD}
-        assert client.post('/register', json=creds).status_code == 201
-        response = client.post('/login', json=creds)
-        assert response.status_code == 200
+        response = client.post('/register', json=creds)
+        assert response.status_code == 201
         tokens = response.get_json()
         client.environ_base['HTTP_AUTHORIZATION'] = \
             f"Bearer {tokens['access_token']}"

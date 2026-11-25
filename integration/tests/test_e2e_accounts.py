@@ -18,6 +18,17 @@ def test_register_login_and_use_token(anon, db):
     assert response.get_json() == {'restaurants': []}
 
 
+def test_register_logs_in(anon, db):
+    response = anon.post('/register', json=CREDS)
+    assert response.status_code == 201
+    body = response.get_json()
+
+    assert anon.get('/restaurants', headers={
+        'Authorization': f"Bearer {body['access_token']}"}).status_code == 200
+    assert anon.post('/refresh', json={
+        'refresh_token': body['refresh_token']}).status_code == 200
+
+
 def test_password_is_stored_hashed(anon, db):
     anon.post('/register', json=CREDS)
     user = db['users'].find_one({'username': 'bob'})

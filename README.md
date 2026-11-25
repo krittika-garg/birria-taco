@@ -83,10 +83,11 @@ Set a private `JWT_SECRET_KEY` in your gitignored `.env` before starting
 the server with `./local.sh`. Use a randomly generated key of at least 32 bytes.
 For deployment, configure a persistent key in the hosting environment.
 
-Log in through `POST /login` with JSON `{"username": "...", "password": "..."}`.
-The response contains `access_token`, `refresh_token`, `token_type` (`Bearer`),
-and `expires_in` (900 seconds). Include the access token on all restaurant
-requests:
+Sign up through `POST /register` or log in through `POST /login`, both with JSON
+`{"username": "...", "password": "..."}`. Signing up also logs the new user in.
+Both responses contain `access_token`, `refresh_token`, `token_type` (`Bearer`),
+and `expires_in` (900 seconds). `/register` returns `201`, or `409` if the
+username is taken. Include the access token on all restaurant requests:
 
 ~~~text
 Authorization: Bearer YOUR_ACCESS_TOKEN

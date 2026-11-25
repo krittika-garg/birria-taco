@@ -21,11 +21,20 @@ def jwt_config(monkeypatch):
 TEST_CLIENT = app.test_client()
 
 
+@patch('security.refresh_tokens.issue_refresh_token', return_value='new-rt',
+       autospec=True)
 @patch('security.auth.register', return_value=True, autospec=True)
-def test_register(mock_reg):
+def test_register(mock_reg, mock_issue):
     resp = TEST_CLIENT.post(
         acc.REGISTER_EP, json={'username': 'bob', 'password': 'pw'})
     assert resp.status_code == 201
+    body = resp.get_json()
+    assert body['refresh_token'] == 'new-rt'
+    assert body['token_type'] == 'Bearer'
+    assert body['expires_in'] == 900
+    claims = decode_access_token(body['access_token'], TEST_JWT_SECRET)
+    assert claims['sub'] == 'bob'
+    mock_issue.assert_called_once_with('bob')
 
 
 def test_register_missing_fields():
@@ -33,11 +42,23 @@ def test_register_missing_fields():
     assert resp.status_code == BAD_REQUEST
 
 
+@patch('security.refresh_tokens.issue_refresh_token', autospec=True)
 @patch('security.auth.register', return_value=False, autospec=True)
-def test_register_taken(mock_reg):
+def test_register_taken(mock_reg, mock_issue):
     resp = TEST_CLIENT.post(
         acc.REGISTER_EP, json={'username': 'bob', 'password': 'pw'})
     assert resp.status_code == 409
+    assert 'access_token' not in resp.get_json()
+    mock_issue.assert_not_called()
+
+
+@patch('security.auth.register', autospec=True)
+def test_register_without_secret_creates_nothing(mock_reg, monkeypatch):
+    monkeypatch.setitem(app.config, 'JWT_SECRET_KEY', None)
+    resp = TEST_CLIENT.post(
+        acc.REGISTER_EP, json={'username': 'bob', 'password': 'pw'})
+    assert resp.status_code == SERVICE_UNAVAILABLE
+    mock_reg.assert_not_called()
 
 
 @patch('security.refresh_tokens.issue_refresh_token', return_value='new-rt',

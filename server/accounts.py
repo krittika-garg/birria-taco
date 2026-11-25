@@ -62,15 +62,24 @@ class Register(Resource):
     @ns.expect(CREDENTIALS)
     def post(self):
         """
-        Create an account from JSON {username, password}.
+        Create an account from JSON {username, password} and log it in;
+        returns the same tokens as /login.
         """
         creds = _credentials()
         if not creds:
             return {MESSAGE: 'username and password required'}, \
                 HTTPStatus.BAD_REQUEST
+        # Checked first so a config problem doesn't leave an account
+        # that was created but never logged in.
+        secret = current_app.config.get('JWT_SECRET_KEY')
+        if not secret:
+            return {MESSAGE: 'Authentication unavailable'}, \
+                HTTPStatus.SERVICE_UNAVAILABLE
         if not auth.register(*creds):
             return {MESSAGE: 'username taken'}, HTTPStatus.CONFLICT
-        return {MESSAGE: 'registered'}, HTTPStatus.CREATED
+        session.clear()
+        return {MESSAGE: 'registered', **_token_response(creds[0], secret)}, \
+            HTTPStatus.CREATED
 
 
 @ns.route(LOGIN_EP)
