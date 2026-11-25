@@ -73,7 +73,28 @@ and registers each namespace. Add a new feature as a new module rather than
 growing an existing one.
 
 ### Deploy
-`deploy.sh` deploys to PythonAnywhere by SSHing in and running `rebuild.sh`
+The live database is a free M0 cluster on MongoDB Atlas, in the `birria-taco`
+organization (ask Sihan for an invite). The app connects as the `birria-app`
+user, which can only read and write `seDB`. Tests write to other databases, so
+run them against local Mongo, not Atlas. Network access is open to `0.0.0.0/0`
+because PythonAnywhere has no fixed IP. To point your local server at Atlas,
+set `CLOUD_MONGO=1` and `MONGO_URI` in `.env`; quote the URI, since `local.sh`
+reads `.env` as a bash script.
+
+The API runs on PythonAnywhere, which needs a paid account: free accounts
+can't reach Atlas. To set it up:
+1. In a PA Bash console: clone the repo, then
+   `mkvirtualenv birria-taco --python=python3.13` and
+   `pip install -r requirements.txt`.
+2. Web tab: add a new web app with **Manual configuration**, then set its
+   virtualenv to `birria-taco`.
+3. Replace the WSGI configuration file with
+   [pythonanywhere_wsgi.py](pythonanywhere_wsgi.py) and fill in its
+   placeholders.
+4. Reload, then open `/health`. It should return
+   `{"db": "ok", "mode": "cloud"}`; if not, check the error log.
+
+After that, `deploy.sh` redeploys by SSHing in and running `rebuild.sh`
 there, which pulls `main` and reloads the site. It needs `PA_USER` and
 `PA_PASSWORD` set.
 

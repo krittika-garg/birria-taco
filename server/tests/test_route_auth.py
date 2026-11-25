@@ -17,6 +17,7 @@ TEST_JWT_SECRET = 'test-only-secret-key-at-least-32-characters'
 PUBLIC_ROUTES = {
     '/',
     '/endpoints',
+    '/health',
     '/hello',
     '/login',
     '/logout',

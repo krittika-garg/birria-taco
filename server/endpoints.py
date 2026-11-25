@@ -29,8 +29,31 @@ for feature in (accounts, follows, groups, meetup, neighborhoods, rankings,
 
 ENDPOINT_EP = '/endpoints'
 ENDPOINT_RESP = 'Available endpoints'
+HEALTH_EP = '/health'
 HELLO_EP = '/hello'
 HELLO_RESP = 'hello'
+
+
+@api.route(HEALTH_EP)
+class Health(Resource):
+    """Check that the server can reach its database, e.g. after a deploy."""
+    def get(self):
+        """
+        Ping MongoDB. Reports whether the cloud or local database is in use,
+        never the connection string.
+        """
+        import pymongo.errors
+        import data.db_connect as dbc
+
+        mode = ('cloud' if os.environ.get('CLOUD_MONGO', dbc.LOCAL)
+                == dbc.CLOUD else 'local')
+        try:
+            # ponytail: uses the shared client's default 30s server
+            # selection timeout, so a down database makes this slow to fail.
+            dbc.connect_db().admin.command('ping')
+        except (pymongo.errors.PyMongoError, ValueError):
+            return {'db': 'unreachable', 'mode': mode}, 503
+        return {'db': 'ok', 'mode': mode}
 
 
 @api.route(HELLO_EP)
