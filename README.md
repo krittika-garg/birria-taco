@@ -106,8 +106,10 @@ meaning the user must log in again. A frontend should only run one refresh at a
 time, because a second request with the same token will fail.
 
 On logout, send `POST /logout` with JSON `{"refresh_token": "..."}` to revoke
-the refresh token, and discard both tokens. An access token that was already
-issued keeps working until it expires.
+the refresh token, and discard both tokens. To log out on every device, send
+`POST /logout/all` with the access token; it revokes all of that user's refresh
+tokens and returns how many with `sessions_ended`. Either way, an access token
+that was already issued keeps working until it expires.
 
 - `POST /restaurants` saves an entry to the logged-in user's list and returns
   `201` with `{"restaurant": {...}}`. Send a JSON object with nonblank `name` and

@@ -8,7 +8,7 @@ from server.endpoints import app
 import server.accounts as acc
 
 
-from security.tokens import decode_access_token
+from security.tokens import create_access_token, decode_access_token
 
 TEST_JWT_SECRET = 'test-only-secret-key-at-least-32-characters'
 
@@ -166,6 +166,25 @@ def test_logout_revokes_refresh_token(mock_revoke):
 def test_logout_without_token_still_succeeds(mock_revoke):
     assert TEST_CLIENT.post(acc.LOGOUT_EP).status_code == OK
     mock_revoke.assert_not_called()
+
+
+@patch('security.refresh_tokens.revoke_all_refresh_tokens', return_value=2,
+       autospec=True)
+def test_logout_all_revokes_the_callers_tokens(mock_revoke_all):
+    token = create_access_token('bob', TEST_JWT_SECRET)
+    resp = TEST_CLIENT.post(acc.LOGOUT_ALL_EP,
+                            headers={'Authorization': f'Bearer {token}'})
+    assert resp.status_code == OK
+    assert resp.get_json()['sessions_ended'] == 2
+    mock_revoke_all.assert_called_once_with('bob')
+
+
+@patch('security.refresh_tokens.revoke_all_refresh_tokens', autospec=True)
+def test_logout_all_needs_access_token(mock_revoke_all):
+    # The user to log out comes only from the token, never the body.
+    resp = TEST_CLIENT.post(acc.LOGOUT_ALL_EP, json={'username': 'bob'})
+    assert resp.status_code == UNAUTHORIZED
+    mock_revoke_all.assert_not_called()
 
 
 @pytest.mark.parametrize('endpoint', [

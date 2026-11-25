@@ -58,3 +58,10 @@ def revoke_refresh_token(token):
     """Delete a token if it exists."""
     token_hash = hash_refresh_token(token)
     dbc.delete(COLLECTION, {'token_hash': token_hash}, db=DB)
+
+
+def revoke_all_refresh_tokens(username):
+    """Delete every token a user holds; return how many there were."""
+    if not isinstance(username, str) or not username:
+        raise ValueError('username must be a nonempty string')
+    return dbc.delete_many(COLLECTION, {'username': username}, db=DB)

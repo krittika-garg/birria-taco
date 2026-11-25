@@ -89,6 +89,14 @@ def delete(collection: str, filt: dict, db=SE_DB):
 
 
 @needs_connection
+def delete_many(collection: str, filt: dict, db=SE_DB):
+    """
+    Delete every doc matching filt; return how many were deleted.
+    """
+    return client[db][collection].delete_many(filt).deleted_count
+
+
+@needs_connection
 def pop_one(collection, filt, db=SE_DB):
     """
     Atomically find and delete the first doc matching filt.

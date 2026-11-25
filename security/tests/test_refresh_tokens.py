@@ -88,6 +88,14 @@ def test_redeem_and_revoke_reject_invalid_input(dbc, token):
     assert not dbc.mock_calls
 
 
+@pytest.mark.parametrize('username', ['', None, 42, {'$ne': None}])
+@patch('security.refresh_tokens.dbc')
+def test_revoke_all_rejects_invalid_username(dbc, username):
+    with pytest.raises(ValueError, match='username'):
+        refresh.revoke_all_refresh_tokens(username)
+    assert not dbc.mock_calls
+
+
 @pytest.fixture
 def live_tokens(monkeypatch):
     """Point the module at a throwaway database on a real local Mongo."""
@@ -141,3 +149,15 @@ def test_revoke_stops_redemption(live_tokens):
     refresh.revoke_refresh_token(token)
     assert refresh.redeem_refresh_token(token) is None
     refresh.revoke_refresh_token(token)
+
+
+def test_revoke_all_only_touches_that_user(live_tokens):
+    bob_phone = refresh.issue_refresh_token('bob')
+    bob_laptop = refresh.issue_refresh_token('bob')
+    alice = refresh.issue_refresh_token('alice')
+
+    assert refresh.revoke_all_refresh_tokens('bob') == 2
+    assert refresh.redeem_refresh_token(bob_phone) is None
+    assert refresh.redeem_refresh_token(bob_laptop) is None
+    assert refresh.redeem_refresh_token(alice) == 'alice'
+    assert refresh.revoke_all_refresh_tokens('bob') == 0

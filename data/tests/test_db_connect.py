@@ -231,7 +231,8 @@ def test_read_filters_by_owner(test_collection):
 
 DECORATED_HELPERS = [
     'create', 'read', 'read_one', 'update', 'update_raw', 'upsert',
-    'delete', 'pop_one', 'create_index', 'read_dict', 'fetch_all_as_dict',
+    'delete', 'delete_many', 'pop_one', 'create_index', 'read_dict',
+    'fetch_all_as_dict',
 ]
 
 

@@ -3,11 +3,12 @@ Accounts: register, log in, refresh tokens and log out.
 """
 from http import HTTPStatus
 
-from flask import current_app, request, session
+from flask import current_app, g, request, session
 from flask_restx import Namespace, Resource, fields
 
 import security.auth as auth
 import security.refresh_tokens as refresh
+from security.jwt_auth import login_required
 from security.tokens import ACCESS_TOKEN_MINUTES, create_access_token
 
 ns = Namespace('accounts', path='/')
@@ -17,6 +18,7 @@ REGISTER_EP = '/register'
 LOGIN_EP = '/login'
 REFRESH_EP = '/refresh'
 LOGOUT_EP = '/logout'
+LOGOUT_ALL_EP = '/logout/all'
 
 # These only document the request bodies in Swagger; the handlers validate.
 CREDENTIALS = ns.model('Credentials', {
@@ -134,3 +136,16 @@ class Logout(Resource):
             refresh.revoke_refresh_token(token)
         session.clear()
         return {MESSAGE: 'logged out'}
+
+
+@ns.route(LOGOUT_ALL_EP)
+class LogoutAll(Resource):
+    method_decorators = [login_required]
+
+    def post(self):
+        """
+        Log out on every device by revoking all of your refresh tokens.
+        """
+        ended = refresh.revoke_all_refresh_tokens(g.current_user)
+        session.clear()
+        return {MESSAGE: 'logged out everywhere', 'sessions_ended': ended}

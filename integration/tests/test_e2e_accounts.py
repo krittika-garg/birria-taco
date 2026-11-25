@@ -84,6 +84,21 @@ def test_logout_revokes_refresh_token(login, anon, db):
         'refresh_token': bob.refresh_token}).status_code == 401
 
 
+def test_logout_all_ends_every_session(login, anon):
+    bob_phone = login('bob')
+    bob_laptop = anon.post('/login', json=CREDS).get_json()['refresh_token']
+    alice = login('alice')
+
+    response = bob_phone.post('/logout/all')
+    assert response.status_code == 200
+    assert response.get_json()['sessions_ended'] == 2
+    for token in (bob_phone.refresh_token, bob_laptop):
+        assert anon.post('/refresh', json={
+            'refresh_token': token}).status_code == 401
+    assert anon.post('/refresh', json={
+        'refresh_token': alice.refresh_token}).status_code == 200
+
+
 def test_only_token_hashes_are_stored(login, db):
     bob = login('bob')
     stored = db['refresh_tokens'].find_one({'username': 'bob'})
